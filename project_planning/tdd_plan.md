@@ -87,7 +87,7 @@ For each small feature or unit within a phase:
             *   Simulate a request with a session ID.
             *   Assert that it loads the correct session state from the database and returns it.
     *   **De-risking:** Validates the orchestration logic of the tRPC procedures, ensuring they correctly call dependencies and manage persistent session state in the database.
-    *   **Status: NOT STARTED**
+    *   **Status: DONE**
 
 ---
 
@@ -105,6 +105,7 @@ For each small feature or unit within a phase:
         *   Call the `saveJdResume` procedure to save JD/Resume text for a user. Assert the data is saved correctly.
         *   Call the `getJdResumeByUserId` procedure. Assert it returns the correct text. Test edge cases.
     *   **De-risking:** Ensures the text saving/loading functionality is reliable via tRPC.
+    *   **Status: DONE**
 
 2.  **Session Creation API (tRPC Procedure):**
     *   **Type:** Integration Tests

@@ -1,10 +1,12 @@
 // src/types/index.ts
 import type { User, JdResumeText, SessionData } from '@prisma/client';
+import { z } from 'zod';
 
 // --- General Types ---
 
 // Define standard roles for conversation turns
 export type ChatRole = 'user' | 'model' | 'system'; // 'system' potentially for internal messages, 'model' is the AI
+export const zodChatRole = z.enum(['user', 'model', 'system']);
 
 
 // --- Persona Types ---
@@ -66,6 +68,19 @@ export interface MvpSessionTurn {
   feedbackPoints?: string[];
   suggestedAlternative?: string;
 }
+
+export const zodMvpSessionTurn = z.object({
+  id: z.string(),
+  role: zodChatRole,
+  text: z.string(),
+  rawAiResponseText: z.string().optional(),
+  timestamp: z.coerce.date(), // Coerce to Date object from string/number
+  analysis: z.string().optional(),
+  feedbackPoints: z.array(z.string()).optional(),
+  suggestedAlternative: z.string().optional(),
+});
+
+export const zodMvpSessionTurnArray = z.array(zodMvpSessionTurn);
 
 // MvpSessionData is now imported from @prisma/client as SessionData.
 // Its `history` field will be of type `Prisma.JsonValue`.
