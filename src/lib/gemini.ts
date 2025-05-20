@@ -4,7 +4,7 @@
 // Based on your example: import {GoogleGenAI, Modality} from '@google/genai';
 import {
   GoogleGenAI,
-  Modality, // Although only text used in MVP, keep import for consistency
+  // Modality, // Although only text used in MVP, keep import for consistency
   // HarmCategory,
   // HarmBlockThreshold,
 } from '@google/genai'; // Assuming this is the correct package name
@@ -16,7 +16,7 @@ import type {
 
 // Import types defined in your project
 import type {
-  MvpJdResumeText, // Type for JD and Resume text (likely { jdText: string; resumeText: string; })
+  JdResumeText, // Corrected MvpJdResumeText to JdResumeText
   Persona, // Type for Persona definition (at least { id: string; name: string; systemPrompt: string; })
   MvpAiResponse, // Type for the structured AI response
   MvpSessionTurn, // Type for storing a single turn in session history ({ role: 'user' | 'model', text: string, rawAiResponseText?: string, analysis?: string, feedbackPoints?: string[], suggestedAlternative?: string })
@@ -26,8 +26,12 @@ import type {
 // Use environment variables for API keys and configuration
 // Ensure GEMINI_API_KEY is set in your .env.local
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
+if (!GEMINI_API_KEY) {
+  // Only throw if not using Vertex AI and API key is missing
+  throw new Error("CRITICAL: GEMINI_API_KEY is not set.");
+}
 // Check if using Vertex AI based on env var from your examples
-const GOOGLE_GENAI_USE_VERTEXAI = process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true';
+// const GOOGLE_GENAI_USE_VERTEXAI = process.env.GOOGLE_GENAI_USE_VERTEXAI === 'true'; // Remove this
 // const GOOGLE_CLOUD_PROJECT = process.env.GOOGLE_CLOUD_PROJECT; // Needed for Vertex AI
 // const GOOGLE_CLOUD_LOCATION = process.env.GOOGLE_CLOUD_LOCATION; // Needed for Vertex AI
 
@@ -35,12 +39,12 @@ const GOOGLE_GENAI_USE_VERTEXAI = process.env.GOOGLE_GENAI_USE_VERTEXAI === 'tru
 // Choose the model for the MVP. 'gemini-2.0-flash' or similar from your examples.
 // Use the specific model string suitable for the `generateContentStream` or `generateContent` method in this library.
 // Check documentation for which models support `systemInstruction` and multi-turn via `contents`.
-const MODEL_NAME_TEXT = GOOGLE_GENAI_USE_VERTEXAI ? 'gemini-2.0-flash' : 'gemini-2.0-flash'; // Use appropriate model names from your examples/docs
+const MODEL_NAME_TEXT = 'gemini-2.0-flash'; // Use appropriate model names from your examples/docs
 
 
 // Initialize the GoogleGenAI client
 const genAI = new GoogleGenAI({
-  apiKey: GOOGLE_GENAI_USE_VERTEXAI ? undefined : GEMINI_API_KEY,
+  apiKey: GEMINI_API_KEY,
   // The vertexai property caused a type error.
   // If Vertex AI is used, it's typically configured via environment variables
   // or a different initialization path if this constructor doesn't support it directly.
@@ -58,7 +62,7 @@ const genAI = new GoogleGenAI({
  * @param persona - The persona definition (from personaService).
  * @returns The system instruction string.
  */
-function buildSystemInstruction(persona: Persona): string {
+export function buildSystemInstruction(persona: Persona): string {
   // Combine the persona's system prompt with general instructions for the interview simulation role.
   // Keep this focused on the AI's identity and high-level task.
   return `You are an AI simulating an interview. Your goal is to act as a ${persona.name} and conduct a realistic interview based on the provided Job Description and Resume, considering the conversation history. Focus on topics relevant to a ${persona.name} role.\n\nPersona specific instructions: "${persona.systemPrompt}"`;
@@ -73,8 +77,8 @@ function buildSystemInstruction(persona: Persona): string {
  * @param currentUserResponse - The text of the user's last response (optional, for continueInterview).
  * @returns An array of Content objects formatted for the Gemini API.
  */
-function buildPromptContents(
-  jdResumeText: MvpJdResumeText,
+export function buildPromptContents(
+  jdResumeText: JdResumeText,
   persona: Persona,
   history: MvpSessionTurn[],
   currentUserResponse?: string // Optional for the first question turn
@@ -133,7 +137,7 @@ async function processStream(streamResponse: AsyncIterable<GenerateContentRespon
         // The structure might be slightly different depending on the library version
         // and model, but the goal is to accumulate text.
         // The official SDK uses chunk.text() as a function.
-        fullTextResponse += chunk.text();
+        fullTextResponse += chunk.text;
         // If using Modality.IMAGE or other data types in the future, process chunk.data here
     }
     return fullTextResponse;
@@ -193,7 +197,7 @@ export function parseAiResponse(rawResponse: string): MvpAiResponse {
  * @returns A promise resolving to the text of the first question and the raw AI response text.
  */
 export async function getFirstQuestion(
-  jdResumeText: MvpJdResumeText,
+  jdResumeText: JdResumeText,
   persona: Persona
 ): Promise<{ questionText: string; rawAiResponseText: string }> {
   try {
@@ -207,7 +211,6 @@ export async function getFirstQuestion(
         // systemInstruction: { parts: [{ text: buildSystemInstruction(persona) }] }, // Removed as it's not a valid param here
         contents: contents,
          // Even though MVP is text, specifying Modality.TEXT might be required
-        config: { responseModalities: [Modality.TEXT] }
     });
 
     // Process the stream to get the complete raw text response
@@ -247,27 +250,20 @@ export async function getFirstQuestion(
  *          and the raw text output from the AI for saving in history.
  */
 export async function continueInterview(
-  jdResumeText: MvpJdResumeText,
+  jdResumeText: JdResumeText,
   persona: Persona,
   history: MvpSessionTurn[], // Array of previous turns including rawAiResponseText
   currentUserResponse: string
 ): Promise<MvpAiResponse & { rawAiResponseText: string }> {
   try {
-    // Build the full conversation contents including history and the current user response
     // System instruction is now part of buildPromptContents
-    const contents = buildPromptContents(
-        jdResumeText,
-        persona,
-        history, // Pass full history
-        currentUserResponse // Pass the user's latest message
-    );
+    const contents = buildPromptContents(jdResumeText, persona, history, currentUserResponse);
 
-    // Call the generateContentStream API with the full context
+    // Call the generateContentStream API
     const streamResponse = await genAI.models.generateContentStream({
         model: MODEL_NAME_TEXT,
-        // systemInstruction: { parts: [{ text: buildSystemInstruction(persona) }] }, // Removed as it's not a valid param here
+        // systemInstruction: { parts: [{ text: buildSystemInstruction(persona) }] }, // Removed
         contents: contents,
-        config: { responseModalities: [Modality.TEXT] } // Specify text modality
     });
 
     // Process the stream to get the complete raw text response

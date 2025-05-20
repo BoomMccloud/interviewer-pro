@@ -188,6 +188,8 @@ Based on the MVP definition and prioritizing core functionality before authentic
 
 **Key Features Implemented:** Core AI response generation (questions, feedback, alternatives), basic session state saving/loading.
 
+**Progress Update:** The core helper functions in `lib/gemini.ts` (`buildSystemInstruction`, `buildPromptContents`, `parseAiResponse`) have been implemented and unit tested. The `getFirstQuestion` function has also been implemented, unit tested, and its integration with the live Gemini API has been successfully validated (spike test passed), confirming API key setup and basic prompt viability. `continueInterview` is implemented and unit tested, with its integration test pending.
+
 **Files to Create/Modify:**
 
 *   `prisma/schema.prisma`: Define database models for `User`, `MvpJdResumeText`, and `MvpSessionData`. `MvpSessionData` must include fields to store the conversation transcript (user input, AI question), and for each AI turn, the generated basic feedback points and suggested alternative response.

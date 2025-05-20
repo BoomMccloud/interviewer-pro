@@ -45,8 +45,8 @@ For each small feature or unit within a phase:
     *   **Type:** Unit Tests
     *   **Target:** `lib/gemini.ts` helper functions (`buildSystemInstruction`, `buildConversationHistory` (as part of `buildPromptContents`), `parseAiResponse`).
     *   **Instrumentation:**
-        *   Test `buildSystemInstruction` with sample JD/Resume/Persona data – assert the output string contains expected elements and formatting. **Status: NOT STARTED**
-        *   Test `buildPromptContents` (which uses `buildSystemInstruction` and formats history similar to `buildConversationHistory`) with sample session history arrays – assert the output is in the correct format for the Gemini API (`[{ role, parts: [{ text }] }]`). **Status: NOT STARTED (Though `getFirstQuestion` and `continueInterview` tests implicitly cover parts of its usage)**
+        *   Test `buildSystemInstruction` with sample JD/Resume/Persona data – assert the output string contains expected elements and formatting. **Status: DONE**
+        *   Test `buildPromptContents` (which uses `buildSystemInstruction` and formats history similar to `buildConversationHistory`) with sample session history arrays – assert the output is in the correct format for the Gemini API (`[{ role, parts: [{ text }] }]`). **Status: DONE**
         *   Test `parseAiResponse` with sample AI raw text strings (using your defined delimiters) – assert the function correctly extracts `nextQuestion`, `analysis`, `feedbackPoints` (as an array), and `suggestedAlternative` into the `MvpAiResponse` structure. Test edge cases (missing delimiters). **Status: DONE (Covered by `tests/parseAIResponse.test.ts`)**
     *   **De-risking:** Isolates the logic that prepares input for and processes output from the AI, which is often complex string manipulation.
 
@@ -66,7 +66,7 @@ For each small feature or unit within a phase:
             *   The response structure from `parseAiResponse` is valid (contains keys).
             *   The generated text *appears* to be a question/feedback based on keywords or length (basic checks).
         *   **This validates that the AI client setup is correct and the prompt structure is *likely* working, despite AI non-determinism.** This is the "Spike Test" mentioned previously, formalized as an integration test suite that uses a real API key (use a separate, restricted key for testing if possible).
-        *   **Status: NOT STARTED**
+        *   **Status: DONE (`getFirstQuestion` and `continueInterview` integration tests DONE)**
     *   **De-risking:** Unit tests confirm your code's logic when dealing with AI inputs/outputs. The Integration/Spike test confirms connectivity and basic prompt viability with the actual AI.
 
 5.  **Session API Route Logic:**
@@ -198,3 +198,17 @@ For each small feature or unit within a phase:
 ---
 
 By following this plan, you will apply TDD across your application layers, ensuring that your core AI logic and data handling are robust (Phase 1 & 2), your frontend accurately reflects the backend state (Phase 3), and your application is secure and user-aware (Phase 4). Remember to commit to the Red-Green-Refactor cycle for each small piece of functionality you add within these phases.
+
+2.  **Persona Service (`lib/personaService.ts`):**
+    *   **Goal:** Define and retrieve interviewer personas.
+    *   **Interface/Type Definition (`Persona`):** Define the structure of a persona (ID, name, system prompt, initial greeting, avatar, etc.).
+        *   **Status: Implicitly DONE** (as part of implementing `getPersona`)
+    *   **`getPersona(id: string): Persona | null` function:**
+        *   Implement a function that takes a persona ID and returns the corresponding persona object or null if not found. For MVP, personas can be hardcoded.
+        *   **Status: DONE**
+    *   **Unit Test (`tests/personaService.test.ts`):**
+        *   Test `getPersona` with valid and invalid IDs.
+        *   Verify the structure and content of the returned persona objects.
+        *   **Status: DONE**
+
+3.  **AI Service (`lib/aiService.ts`):
