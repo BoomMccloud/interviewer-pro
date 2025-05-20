@@ -67,7 +67,17 @@
 │   ├── lib/            # Backend-specific libraries or helpers used by API routes
 │   │   ├── auth.ts         # NextAuth configuration
 │   │   ├── db.ts           # Database connection/client setup (if using a DB)
-│   │   ├── gemini.ts       # Wrapper/client for interacting with the Gemini API
+│   │   ├── gemini.ts       # Core AI Engine and API Client for Gemini.
+│   │   │   # Encapsulates interaction with the Gemini API.
+│   │   │   # Handles prompt construction using JD/Resume text, session history, and persona details.
+│   │   │   # Provides functions to generate initial questions, dynamic follow-up questions,
+│   │   │   # analyze user responses, generate basic feedback points, and suggest alternative answers.
+│   │   │   # (Future: Will also handle integration with STT/TTS/streaming for voice mode).
+│   │   │   # Called by backend API routes (e.g., /api/mvp-sessions/[id]).
+│   |   ├── personaService.ts 
+│   │   # Handles retrieving interviewer persona definitions (system prompts, names, descriptions, asset URLs).
+│   │   # Acts as the source of truth for persona data, potentially loading from config files or a database.
+│   │   # Used by backend services/APIs (like session handling) to get persona details needed for AI interaction and  
 │   │   ├── parsingService.ts # Client for the 3rd party PDF/Link parsing service
 │   │   └── utils.ts        # Backend utility functions (not exposed to frontend)
 │   ├── utils/          # Frontend utility functions and helpers

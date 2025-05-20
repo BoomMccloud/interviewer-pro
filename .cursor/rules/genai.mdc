@@ -1,0 +1,37 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Correct Usage of @google/genai for Interviewer-Pro
+
+This document summarizes the correct usage of the `@google/genai` library based on troubleshooting efforts for the `interviewer-pro` project.
+
+## 1. Import Statements
+
+The primary class `GoogleGenAI` and other necessary enums/types should be imported as named exports:
+
+```typescript
+import {
+  GoogleGenAI,
+  HarmCategory,
+  HarmBlockThreshold,
+  type Content, // For type-only import if verbatimModuleSyntax is enabled
+  type Part    // For type-only import if verbatimModuleSyntax is enabled
+} from '@google/genai';
+```
+
+# DO NOT USE genAI.getGenerativeModel, this has been deprecated!!!
+GoogleGenAI is the correct class name.
+
+## 2. Client Initialization
+
+The `GoogleGenAI` client should be instantiated with an options object containing the `apiKey`:
+
+```typescript
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? ''; // Ensure API key is loaded
+if (!GEMINI_API_KEY) {
+  throw new Error("CRITICAL: GEMINI_API_KEY is not set.");
+}
+const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+```
