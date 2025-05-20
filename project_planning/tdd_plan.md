@@ -69,20 +69,24 @@ For each small feature or unit within a phase:
         *   **Status: DONE (`getFirstQuestion` and `continueInterview` integration tests DONE)**
     *   **De-risking:** Unit tests confirm your code's logic when dealing with AI inputs/outputs. The Integration/Spike test confirms connectivity and basic prompt viability with the actual AI.
 
-5.  **Session API Route Logic:**
+5.  **Session API Route Logic (Now tRPC Procedures):**
     *   **Type:** Integration Tests
-    *   **Target:** `app/api/mvp-sessions/[id]/route.ts` (GET and POST handlers).
+    *   **Target:** tRPC router for sessions (e.g., `src/server/api/routers/session.ts` or a similar file within your tRPC structure) containing procedures like `getSessionById` and `submitAnswerToSession`.
     *   **Instrumentation:**
-        *   Use a test setup that allows you to make HTTP requests to your API route handlers in isolation (libraries like `next-test-api-route-handler` help, or manually construct request/response objects).
-        *   **Mock `lib/gemini.ts` and `lib/personaService.ts` calls** within these API tests. This isolates the API's logic (handling HTTP requests, interacting with the DB) from the AI complexity.
-        *   Test the POST handler: Simulate receiving user input. Assert that the API route:
-            *   Loads the correct session/JD/Resume from the database.
-            *   Calls `personaService.getPersona` with the expected ID.
-            *   Calls `gemini.ts.continueInterview` with the correct context (history including user input, persona, JD/Resume).
-            *   **Saves the updated session state, including the AI's full structured response (next question, feedback, alternative) returned by the *mocked* `gemini.ts` call, back to the database.**
-            *   Returns the correct HTTP status code and response body (the next question text).
-        *   Test the GET handler: Simulate a GET request. Assert that it loads the correct session state from the database and returns it.
-    *   **De-risking:** Validates the orchestration logic of the API route, ensuring it correctly calls dependencies and manages persistent session state in the database upon receiving user input.
+        *   Tests will involve creating a tRPC test caller/client.
+        *   **Mock `lib/gemini.ts` and `lib/personaService.ts` calls** within these tRPC procedure tests. This isolates the tRPC procedure's logic (handling inputs, interacting with the DB, calling other services) from the AI complexity.
+        *   Test the `submitAnswerToSession` procedure (equivalent to POST handler):
+            *   Simulate receiving user input for a given session ID.
+            *   Assert that the procedure:
+                *   Loads the correct session/JD/Resume from the database.
+                *   Calls `personaService.getPersona` with the expected ID (if applicable, or persona is part of session).
+                *   Calls `gemini.ts.continueInterview` with the correct context.
+                *   **Saves the updated session state, including the AI's full structured response, back to the database.**
+                *   Returns the correct response body (e.g., the next question text or full AI response).
+        *   Test the `getSessionById` procedure (equivalent to GET handler):
+            *   Simulate a request with a session ID.
+            *   Assert that it loads the correct session state from the database and returns it.
+    *   **De-risking:** Validates the orchestration logic of the tRPC procedures, ensuring they correctly call dependencies and manage persistent session state in the database.
     *   **Status: NOT STARTED**
 
 ---
@@ -93,38 +97,38 @@ For each small feature or unit within a phase:
 
 **Testing Focus:**
 
-1.  **JD/Resume Text API:**
+1.  **JD/Resume Text API (tRPC Procedures):**
     *   **Type:** Integration Tests
-    *   **Target:** `app/api/mvp-jd-resume/route.ts` (GET and POST handlers).
+    *   **Target:** tRPC router for JD/Resume (e.g., `src/server/api/routers/jdResume.ts`) procedures like `saveJdResume` and `getJdResumeByUserId`.
     *   **Instrumentation:**
         *   Use a test database.
-        *   Simulate POST requests to save JD/Resume text for a user (use a dummy user ID). Assert the data is saved correctly in the database.
-        *   Simulate GET requests. Assert that the API returns the correct text for the given user ID. Test edge cases (user with no saved text).
-    *   **De-risking:** Ensures the text saving/loading functionality is reliable.
+        *   Call the `saveJdResume` procedure to save JD/Resume text for a user. Assert the data is saved correctly.
+        *   Call the `getJdResumeByUserId` procedure. Assert it returns the correct text. Test edge cases.
+    *   **De-risking:** Ensures the text saving/loading functionality is reliable via tRPC.
 
-2.  **Session Creation API:**
+2.  **Session Creation API (tRPC Procedure):**
     *   **Type:** Integration Tests
-    *   **Target:** `app/api/mvp-sessions/route.ts` (POST handler).
+    *   **Target:** tRPC router for sessions (e.g., `src/server/api/routers/session.ts`) procedure like `createSession`.
     *   **Instrumentation:**
         *   Use a test database.
         *   **Mock `lib/gemini.ts.getFirstQuestion` and `lib/personaService.getPersona` calls.**
-        *   Simulate a POST request to create a session (provide necessary user ID).
-        *   Assert that the API route:
+        *   Call the `createSession` procedure (provide necessary user ID).
+        *   Assert that the procedure:
             *   Retrieves the correct JD/Resume text for the user.
-            *   Calls `personaService.getPersona` and `gemini.ts.getFirstQuestion` with the correct inputs.
-            *   Creates a new `MvpSessionData` record in the database, linked to the user and JD/Resume text, with initial state and the first question returned by the *mocked* `gemini.ts` call.
+            *   Calls mocked services correctly.
+            *   Creates a new `SessionData` record in the database.
             *   Returns the new session ID and the first question.
-    *   **De-risking:** Validates the entry point for starting a new session and its initial state setup in the database.
+    *   **De-risking:** Validates the entry point for starting a new session via tRPC.
 
-3.  **Report Data API:**
+3.  **Report Data API (tRPC Procedure):**
     *   **Type:** Integration Tests
-    *   **Target:** `app/api/mvp-sessions/[id]/report/route.ts` (GET handler).
+    *   **Target:** tRPC router for reports (e.g., `src/server/api/routers/report.ts` or part of session router) procedure like `getReportBySessionId`.
     *   **Instrumentation:**
         *   Use a test database.
-        *   Manually set up a `MvpSessionData` record in the test database representing a completed session with history (including saved feedback/alternatives).
-        *   Simulate a GET request to the report endpoint with the ID of the pre-configured session.
-        *   Assert that the API fetches the correct data and formats it into the structure expected by the frontend `ReportViewer`.
-    *   **De-risking:** Confirms the backend can correctly retrieve and format all necessary data for the report.
+        *   Manually set up a `SessionData` record representing a completed session.
+        *   Call the `getReportBySessionId` procedure.
+        *   Assert that the procedure fetches the correct data and formats it.
+    *   **De-risking:** Confirms the backend can correctly retrieve and format report data via tRPC.
 
 ---
 

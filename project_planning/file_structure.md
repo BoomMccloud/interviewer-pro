@@ -86,9 +86,16 @@
 │   │   └── utils.ts        # Backend utility functions (not exposed to frontend)
 │   ├── server/         # Server-side specific code, esp. for tRPC     ✅ Exists (Deviation: Using tRPC)
 │   │   ├── api/          # tRPC API structure                         ✅ Exists
+│   │   │   ├── root.ts   # Root tRPC router merging all sub-routers (ensure this exists or is index.ts)
 │   │   │   └── routers/  # tRPC routers defining API procedures       ✅ Exists
 │   │   │       # Example: root.ts, jdRouters.ts, sessionRouters.ts (Actual structure to be defined here)
+│   │   │       ├── user.ts # Optional: for user-specific procedures if not in a general router
+│   │   │       ├── jdResume.ts # tRPC router for Job Description & Resume text management
+│   │   │       ├── session.ts  # tRPC router for interview session management (create, get, submit answer, report)
+│   │   │       └── index.ts    # Typically aggregates and exports routers, or acts as the root router
 │   │   ├── auth/         # Core authentication logic/config             ✅ Exists
+│   │   ├── db.ts         # Prisma client instance (could be re-exported from /lib or defined here)
+│   │   └── api.ts        # Functions to make API calls (e.g., to tRPC procedures if using tRPC client)
 │   ├── utils/          # Frontend utility functions and helpers       ✅ Exists (but may be empty)
 │   │   ├── api.ts          # Functions to make API calls (e.g., to tRPC procedures if using tRPC client)
 │   │   ├── constants.ts    # Application-wide constants (e.g., subscription tiers, route paths)
@@ -155,7 +162,7 @@ lib/personaService.ts: Handles retrieving interviewer persona definitions. (Used
 lib/utils.ts: Backend-specific helper functions.
 
 src/server/ (Server-side specific code) ✅ Exists
-src/server/api/routers/: Contains tRPC router definitions. ✅ Exists. This is where backend API logic (procedures/resolvers) for JDs, sessions, reports, etc., will reside. Example: `root.ts`, `jd.ts`, `session.ts`.
+src/server/api/routers/: Contains tRPC router definitions. ✅ Exists. This is where backend API logic (procedures/resolvers) for JDs, sessions, reports, etc., will reside. Example: `root.ts` (or `index.ts` in this dir), `jdResume.ts`, `session.ts`.
 src/server/auth/: Core NextAuth.js server-side logic, configurations, or callbacks. ✅ Exists. Works in conjunction with `src/app/api/auth/[...nextauth]/route.ts`.
 
 src/utils/ (Frontend Utility Functions) ✅ Exists
