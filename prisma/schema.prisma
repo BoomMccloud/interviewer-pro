@@ -14,18 +14,6 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
-model Post {
-    id        Int      @id @default(autoincrement())
-    name      String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-
-    createdBy   User   @relation(fields: [createdById], references: [id])
-    createdById String
-
-    @@index([name])
-}
-
 // Necessary for Next auth
 model Account {
     id                       String  @id @default(cuid())
@@ -33,15 +21,15 @@ model Account {
     type                     String
     provider                 String
     providerAccountId        String
-    refresh_token            String? // @db.Text
-    access_token             String? // @db.Text
+    refresh_token            String? // @db.Text for MySQL/SQLServer
+    access_token             String? // @db.Text for MySQL/SQLServer
     expires_at               Int?
     token_type               String?
     scope                    String?
-    id_token                 String? // @db.Text
+    id_token                 String? // @db.Text for MySQL/SQLServer
     session_state            String?
     user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-    refresh_token_expires_in Int?
+    refresh_token_expires_in Int? // Specific to some providers like Auth0
 
     @@unique([provider, providerAccountId])
 }
@@ -61,8 +49,11 @@ model User {
     emailVerified DateTime?
     image         String?
     accounts      Account[]
-    sessions      Session[]
-    posts         Post[]
+    sessions      Session[] // NextAuth sessions
+
+    // Custom application models
+    jdResumeTexts JdResumeText[]
+    interviewSessions SessionData[] // Renamed to avoid conflict with NextAuth Session
 }
 
 model VerificationToken {
@@ -71,4 +62,37 @@ model VerificationToken {
     expires    DateTime
 
     @@unique([identifier, token])
+}
+
+// Custom application models
+
+model JdResumeText {
+    id        String   @id @default(cuid())
+    jdText    String
+    resumeText String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    interviewSessions SessionData[]
+}
+
+model SessionData {
+    id                String    @id @default(cuid())
+    personaId         String    // e.g., 'technical-lead'
+    startTime         DateTime  @default(now())
+    endTime           DateTime? // Nullable, indicates session hasn't ended or is pending completion
+    durationInSeconds Int       // Configured duration
+    history           Json      // Stores MvpSessionTurn[]
+    overallSummary    String?   // Optional summary text
+    createdAt         DateTime  @default(now())
+    updatedAt         DateTime  @updatedAt
+
+    userId            String
+    user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    jdResumeTextId    String
+    jdResumeText      JdResumeText @relation(fields: [jdResumeTextId], references: [id], onDelete: Cascade)
 }

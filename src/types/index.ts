@@ -1,4 +1,5 @@
 // src/types/index.ts
+import type { User, JdResumeText, SessionData } from '@prisma/client';
 
 // --- General Types ---
 
@@ -21,23 +22,19 @@ export interface Persona {
 }
 
 // Define specific persona IDs used in MVP (can expand later)
-export type PersonaId = 'technical-lead';
+// This remains useful as SessionData.personaId is just `string` from Prisma
+export type PersonaId = 'technical-lead'; 
 
 
-// --- JD/Resume Text Types (for MVP copy/paste) ---
+// --- Renaming Prisma's generated types for clarity in this file, if preferred, or use directly ---
+// Alternatively, you can use User, JdResumeText, SessionData directly from @prisma/client where needed.
+// For this example, we'll alias them if we want to keep "Mvp" prefix in *this file's* exports for some reason,
+// but it's often cleaner to just use the Prisma names directly in consuming code.
+// For now, let's assume we'll use Prisma's names directly and remove the Mvp-prefixed ones.
 
-// Represents the copy/pasted JD and Resume text for a user
-// In MVP, this is stored per user, not per JD Target like the long-term plan
-export interface MvpJdResumeText {
-  id: string; // Database ID for this text entry
-  userId: string; // ID of the user who saved this text
-  jdText: string; // The full raw text of the Job Description
-  resumeText: string; // The full raw text of the Resume
-  createdAt: Date;
-  updatedAt: Date;
-  // Link to sessions conducted using this text (handled by Prisma relations)
-}
-
+// export type MvpUser = User; // Now using Prisma's User directly
+// export type MvpJdResumeText = JdResumeText; // Now using Prisma's JdResumeText directly
+// export type MvpSessionData = SessionData; // Now using Prisma's SessionData directly
 
 // --- AI Response & Feedback Types ---
 
@@ -53,9 +50,9 @@ export interface MvpAiResponse {
 // --- Session History & State Types ---
 
 // Represents a single turn in the interview conversation history
-// Stored in the database as part of MvpSessionData
+// Stored in the database as part of SessionData.history (JSON field)
 export interface MvpSessionTurn {
-  id: string; // Database ID for the turn (if stored as separate records) or index in array
+  id: string; // Can be a unique ID for the turn, or simply an array index if only stored in SessionData.history
   role: ChatRole; // 'user' or 'model' (AI)
   text: string; // The display text (user's answer, AI's question part)
   // Store the full raw AI response text containing all delimited sections.
@@ -70,56 +67,29 @@ export interface MvpSessionTurn {
   suggestedAlternative?: string;
 }
 
-// Represents the state and history of a single MVP interview session
-export interface MvpSessionData {
-  id: string; // Database ID for the session
-  userId: string; // ID of the user conducting the session
-  mvpJdResumeTextId: string; // ID linking to the specific JD/Resume text used
-  personaId: PersonaId; // ID of the persona used (always 'technical-lead' for MVP)
-  startTime: Date; // When the session started
-  endTime?: Date; // When the session ended (if completed)
-  durationInSeconds: number; // Total configured duration
-  status: 'in-progress' | 'completed' | 'cancelled' | 'error'; // Current status
-
-  // Array of turns in the conversation. Ordered chronologically.
-  // Prisma might store this as related records, or a JSON array depending on your schema.
-  history: MvpSessionTurn[];
-
-  // Fields needed for the report summary (can be calculated upon session completion or fetched)
-  // For MVP, maybe just a simple overall assessment string?
-  overallSummary?: string; // Example: "Overall performance was good, but could improve structure."
-
-  createdAt: Date; // When the session record was created
-  updatedAt: Date; // When the session record was last updated
-}
+// MvpSessionData is now imported from @prisma/client as SessionData.
+// Its `history` field will be of type `Prisma.JsonValue`.
+// In your application logic, you will cast this to `MvpSessionTurn[]`.
 
 // --- User Type (Minimal for MVP Auth) ---
-
-// Represents a user in the database
-export interface MvpUser {
-    id: string; // User's unique ID from NextAuth/database
-    email?: string | null; // Optional email
-    name?: string | null; // Optional name
-    image?: string | null; // Optional profile image URL
-    // Add relationships to MvpJdResumeText and MvpSessionData if needed
-    // mvpJdResumeTexts?: MvpJdResumeText[];
-    // mvpSessions?: MvpSessionData[];
-}
+// MvpUser is now imported from @prisma/client as User.
 
 // --- Other potential types for frontend/API ---
 
 // Example type for data returned by /api/mvp-sessions/[id]/report
 export interface MvpReportData {
     sessionId: string;
-    status: MvpSessionData['status'];
-    startTime: string; // Format dates as strings for frontend
-    endTime?: string;
-    durationConfigured: number; // Total seconds configured
-    durationActual?: number; // Actual seconds session lasted (if ended naturally)
-    personaName: string; // Get from Persona via personaId
-
-    overallSummary: string; // Overall assessment
-
-    // Structured history with all details needed for display
-    turns: Array<MvpSessionTurn>; // Contains text, analysis, feedback, alternative
+    // status: SessionData['status']; // Status was removed, derived from endTime
+    startTime: string; // Should be Date, convert to string in API response if needed
+    endTime?: string | null; // Align with SessionData['endTime'] (Date | null)
+    durationConfigured: number; // Corresponds to SessionData['durationInSeconds']
+    durationActual?: number; // To be calculated
+    personaName: string; // Will need to map SessionData['personaId'] to a name
+    overallSummary?: string | null; // Align with SessionData['overallSummary']
+    turns: Array<MvpSessionTurn>; 
 }
+
+// Exporting the Prisma generated types directly if they are to be used project-wide
+// This makes it easy to import User, JdResumeText, SessionData from 'src/types'
+// instead of '@prisma/client' everywhere, centralizing the source.
+export type { User, JdResumeText, SessionData };

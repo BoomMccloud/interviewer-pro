@@ -132,9 +132,8 @@ async function processStream(streamResponse: AsyncIterable<GenerateContentRespon
     for await (const chunk of streamResponse) {
         // The structure might be slightly different depending on the library version
         // and model, but the goal is to accumulate text.
-        if (chunk.text) {
-            fullTextResponse += chunk.text;
-        }
+        // The official SDK uses chunk.text() as a function.
+        fullTextResponse += chunk.text();
         // If using Modality.IMAGE or other data types in the future, process chunk.data here
     }
     return fullTextResponse;
@@ -148,7 +147,7 @@ async function processStream(streamResponse: AsyncIterable<GenerateContentRespon
  * @param rawResponse - The raw text string received from the Gemini API.
  * @returns A structured object containing the extracted parts.
  */
-function parseAiResponse(rawResponse: string): MvpAiResponse {
+export function parseAiResponse(rawResponse: string): MvpAiResponse {
     // This function remains largely the same as before, as it parses *your defined format*
     // from the raw text, regardless of how the raw text was received (streamed or not).
     const cleanedResponse = rawResponse ? rawResponse.trim() : "";

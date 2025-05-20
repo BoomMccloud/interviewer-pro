@@ -32,30 +32,32 @@ For each small feature or unit within a phase:
     *   **Target:** `prisma/schema.prisma`, `lib/db.ts` (via basic Prisma client operations).
     *   **Instrumentation:** Write tests using your Prisma client instance pointed at a **test database**. Test that you can create, read, update, and delete records for `User`, `MvpJdResumeText`, and `MvpSessionData` models correctly. Verify data types and relationships.
     *   **De-risking:** Ensures your database setup and models are correct and interacting properly with Prisma *before* complex logic is built on top.
+    *   **Status: DONE**
 
 2.  **Persona Service:**
     *   **Type:** Unit Tests
     *   **Target:** `lib/personaService.ts`.
     *   **Instrumentation:** Write tests that assert `getPersona('technical-lead')` returns the expected hardcoded persona object with all required fields (id, name, systemPrompt). Assert that requesting an invalid ID returns null or throws an expected error.
     *   **De-risking:** Verifies the service reliably provides the persona data structure needed by other services.
+    *   **Status: NOT STARTED**
 
 3.  **AI Logic Helpers (Prompting/Parsing):**
     *   **Type:** Unit Tests
-    *   **Target:** `lib/gemini.ts` helper functions (`buildSystemInstructions`, `buildConversationHistory`, `parseAiResponse`).
+    *   **Target:** `lib/gemini.ts` helper functions (`buildSystemInstruction`, `buildConversationHistory` (as part of `buildPromptContents`), `parseAiResponse`).
     *   **Instrumentation:**
-        *   Test `buildSystemInstructions` with sample JD/Resume/Persona data – assert the output string contains expected elements and formatting.
-        *   Test `buildConversationHistory` with sample session history arrays – assert the output is in the correct format for the Gemini API (`[{ role, parts: [{ text }] }]`).
-        *   Test `parseAiResponse` with sample AI raw text strings (using your defined delimiters) – assert the function correctly extracts `nextQuestion`, `analysis`, `feedbackPoints` (as an array), and `suggestedAlternative` into the `MvpAiResponse` structure. Test edge cases (missing delimiters).
+        *   Test `buildSystemInstruction` with sample JD/Resume/Persona data – assert the output string contains expected elements and formatting. **Status: NOT STARTED**
+        *   Test `buildPromptContents` (which uses `buildSystemInstruction` and formats history similar to `buildConversationHistory`) with sample session history arrays – assert the output is in the correct format for the Gemini API (`[{ role, parts: [{ text }] }]`). **Status: NOT STARTED (Though `getFirstQuestion` and `continueInterview` tests implicitly cover parts of its usage)**
+        *   Test `parseAiResponse` with sample AI raw text strings (using your defined delimiters) – assert the function correctly extracts `nextQuestion`, `analysis`, `feedbackPoints` (as an array), and `suggestedAlternative` into the `MvpAiResponse` structure. Test edge cases (missing delimiters). **Status: DONE (Covered by `tests/parseAIResponse.test.ts`)**
     *   **De-risking:** Isolates the logic that prepares input for and processes output from the AI, which is often complex string manipulation.
 
 4.  **Core AI Interaction Functions (`gemini.ts` main functions):**
     *   **Type:** Unit Tests (with Mocks) & Integration Tests (with Real AI - the spike)
     *   **Target:** `lib/gemini.ts` main functions (`getFirstQuestion`, `continueInterview`).
     *   **Instrumentation (Unit Tests with Mocks):**
-        *   Use Jest mocks (`jest.mock('@google/generative-ai')`) to **mock the actual API calls** made by `gemini.ts`.
-        *   Mock the `generateContent` and `sendMessage` methods to return predefined "fake" AI responses (raw text strings that *match your expected delimiter format*).
-        *   Test `getFirstQuestion`: Call the function with sample inputs, assert that the mocked API method was called with the expected prompt, and that the function correctly parses the *mocked* response and returns the extracted question.
-        *   Test `continueInterview`: Call the function with sample inputs (history, user response), assert that the mocked API method was called with the correct history and prompt (including system instructions), and that the function correctly parses the *mocked* AI response and returns the structured `MvpAiResponse`.
+        *   Use Jest mocks (`jest.mock('@google/genai')`) to **mock the actual API calls** made by `gemini.ts`.
+        *   Mock the `generateContentStream` method to return predefined "fake" AI responses (raw text strings that *match your expected delimiter format*).
+        *   Test `getFirstQuestion`: Call the function with sample inputs, assert that the mocked API method was called with the expected prompt, and that the function correctly parses the *mocked* response and returns the extracted question. **Status: DONE (Covered by `tests/gemini-single.test.ts`)**
+        *   Test `continueInterview`: Call the function with sample inputs (history, user response), assert that the mocked API method was called with the correct history and prompt (including system instructions), and that the function correctly parses the *mocked* AI response and returns the structured `MvpAiResponse`. **Status: DONE (Covered by `tests/gemini-continueInterview.test.ts`)**
     *   **Instrumentation (Integration Test / Spike):**
         *   Write separate tests or a dedicated test suite that calls `lib/gemini.ts` functions *without mocking the API*.
         *   Use controlled, simple inputs (short JD/Resume, basic history).
@@ -64,6 +66,7 @@ For each small feature or unit within a phase:
             *   The response structure from `parseAiResponse` is valid (contains keys).
             *   The generated text *appears* to be a question/feedback based on keywords or length (basic checks).
         *   **This validates that the AI client setup is correct and the prompt structure is *likely* working, despite AI non-determinism.** This is the "Spike Test" mentioned previously, formalized as an integration test suite that uses a real API key (use a separate, restricted key for testing if possible).
+        *   **Status: NOT STARTED**
     *   **De-risking:** Unit tests confirm your code's logic when dealing with AI inputs/outputs. The Integration/Spike test confirms connectivity and basic prompt viability with the actual AI.
 
 5.  **Session API Route Logic:**
@@ -80,6 +83,7 @@ For each small feature or unit within a phase:
             *   Returns the correct HTTP status code and response body (the next question text).
         *   Test the GET handler: Simulate a GET request. Assert that it loads the correct session state from the database and returns it.
     *   **De-risking:** Validates the orchestration logic of the API route, ensuring it correctly calls dependencies and manages persistent session state in the database upon receiving user input.
+    *   **Status: NOT STARTED**
 
 ---
 
