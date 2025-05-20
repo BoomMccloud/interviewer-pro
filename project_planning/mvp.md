@@ -33,72 +33,79 @@ This MVP deliberately cuts dependencies on complex parsing tools, voice/avatar f
 This is a slimmed-down version of the long-term plan, focusing only on necessary components.
 src/
 ├── app/
-│ ├── api/
-│ │ ├── auth/ # NextAuth API route handler
-│ │ │ └── [...nextauth]/
-│ │ │ └── route.ts # Handles auth requests (login, logout, session)
-│ │ ├── trpc/ # tRPC handler for exposing tRPC router
-│ │ │ └── [trpc]/
-│ │ │ └── route.ts # Main tRPC API endpoint handler
-│ │ ├── route.ts # (Optional) Catch-all for other API calls or redirects
-│ ├── (protected)/ # Grouping for routes requiring authentication
-│ │ ├── dashboard/ # User's main dashboard - Contains copy/paste inputs and session history list
-│ │ │ └── page.tsx # Renders the input form and history list
-│ │ ├── sessions/ # Interview session pages
-│ │ │ └── [id]/ # Dynamic route for an active or completed MVP session
-│ │ │ ├── page.tsx # The text-only interview simulation page (MVP UI)
-│ │ │ └── report/
-│ │ │ └── page.tsx # Page displaying the basic post-interview report
-│ │ ├── layout.tsx # Root layout for protected routes (handles auth check)
-│ │ └── route.ts # (Optional) Catch-all for protected pages
-│ ├── login/ # Login page
-│ │ └── page.tsx
-│ ├── layout.tsx # Root layout for the entire application
-│ └── page.tsx # Root landing page (redirects based on auth)
-├── components/ # Reusable React components
-│ ├── Auth/ # Auth-related components
-│ │ ├── GoogleSignInButton.tsx # Button to initiate Google login
-│ │ └── SessionProvider.tsx # NextAuth session provider wrapper
-│ ├── UI/ # Basic, general-purpose UI components (Button, Input, Spinner, Timer)
-│ │ └── ... (Button.tsx, Input.tsx, Timer.tsx, etc.)
-│ ├── MvpJdResumeInputForm.tsx # Component containing the copy/paste text areas and 'Start Session' button
-│ ├── MvpSessionHistoryList.tsx # Component to display a list of past MVP sessions for the current text input
-│ ├── Sessions/ # Components specific to interview sessions and reports
-│ │ ├── InterviewUI/
-│ │ │ └── TextInterviewUI.tsx # The chat-based interface component for text interviews
-│ │ ├── ReportViewer.tsx # Main component to display the report structure
-│ │ └── QuestionFeedback.tsx # Displays question, answer, basic feedback, and suggested alternative
-│ └── Layout/ # Basic layout components (optional)
-│ └── ...
+│   ├── api/
+│   │   ├── auth/ # NextAuth API route handler
+│   │   │   └── [...nextauth]/
+│   │   │       └── route.ts # Handles auth requests (login, logout, session)
+│   │   ├── trpc/ # tRPC handler for exposing tRPC router
+│   │   │   └── [trpc]/
+│   │   │       └── route.ts # Main tRPC API endpoint handler
+│   ├── (protected)/ # Grouping for routes requiring authentication
+│   │   ├── dashboard/ # User's main dashboard - Contains copy/paste inputs and session history list
+│   │   │   └── page.tsx # Renders the input form and history list
+│   │   ├── sessions/ # Interview session pages
+│   │   │   └── [id]/ # Dynamic route for an active or completed MVP session
+│   │   │       ├── page.tsx # The text-only interview simulation page (MVP UI)
+│   │   │       └── report/
+│   │   │           └── page.tsx # Page displaying the basic post-interview report
+│   │   ├── layout.tsx # Root layout for protected routes (handles auth check)
+│   ├── login/ # Login page
+│   │   └── page.tsx
+│   ├── layout.tsx # Root layout for the entire application
+│   └── page.tsx # Root landing page (redirects based on auth)
+├── components/ # Reusable React components (Consider co-locating under src/app/_components or feature directories)
+│   ├── Auth/ # Auth-related components
+│   │   ├── GoogleSignInButton.tsx # Button to initiate Google login
+│   │   └── SessionProvider.tsx # NextAuth session provider wrapper
+│   ├── UI/ # Basic, general-purpose UI components (Button, Input, Spinner, Timer)
+│   │   └── ... (Button.tsx, Input.tsx, Timer.tsx, etc.)
+│   ├── MvpJdResumeInputForm.tsx # Component containing the copy/paste text areas and 'Start Session' button
+│   ├── MvpSessionHistoryList.tsx # Component to display a list of past MVP sessions for the current text input
+│   ├── Sessions/ # Components specific to interview sessions and reports
+│   │   ├── InterviewUI/
+│   │   │   └── TextInterviewUI.tsx # The chat-based interface component for text interviews
+│   │   ├── ReportViewer.tsx # Main component to display the report structure
+│   │   └── QuestionFeedback.tsx # Displays question, answer, basic feedback, and suggested alternative
+│   └── Layout/ # Basic layout components (optional)
+│       └── ...
 ├── lib/ # Backend-specific libraries or helpers used by API routes and tRPC procedures
-│ ├── auth.ts # NextAuth configuration details
-│ ├── db.ts # Database connection/client setup (Needed to store user, JD/Resume text, session history, report data)
-│ ├── gemini.ts # Wrapper/client for interacting with the Gemini API. Contains core AI logic for dynamic questioning, response analysis, feedback points, and alternative response generation. Receives necessary context (JD/Resume text, persona prompt, history) from calling API route.
-│ ├── personaService.ts # Handles providing the hardcoded "Technical Lead" persona definition (prompt, name). Used by the session API.
-│ └── utils.ts # Backend utility functions
+│   ├── auth.ts # NextAuth configuration details (Potentially more in src/server/auth)
+│   ├── gemini.ts # Wrapper/client for interacting with the Gemini API.
+│   ├── personaService.ts # Handles providing the hardcoded "Technical Lead" persona definition.
+│   └── utils.ts # Backend utility functions (if any, distinct from frontend utils)
+├── server/ # Server-side specific code, esp. for tRPC
+│   ├── api/
+│   │   ├── root.ts # Main tRPC router merging all sub-routers
+│   │   └── routers/
+│   │       ├── jdResume.ts # tRPC router for JD/Resume text management
+│   │       └── session.ts  # tRPC router for interview session management
+│   ├── auth/ # Core server-side NextAuth logic (e.g., callbacks, adapter config if not in lib/auth.ts)
+│   └── db.ts # Prisma client instance (re-exported from here)
 ├── utils/ # Frontend utility functions and helpers
-│ ├── api.ts # Functions to make API calls to tRPC procedures using the tRPC client
-│ ├── constants.ts # Application-wide constants (e.g., session duration, API paths)
-│ └── formatters.ts # Data formatting functions
+│   ├── api.ts # Functions to make API calls to tRPC procedures using the tRPC client
+│   ├── constants.ts # Application-wide constants
+│   └── formatters.ts # Data formatting functions
 ├── types/ # TypeScript type definitions
-│ └── index.ts # Central file for interface/type exports (MvpUser, MvpJdResumeText, MvpSessionData, MvpReportData, etc.)
+│   └── index.ts # Central file for interface/type exports
 ├── middleware.ts # Next.js middleware (for protected route authentication)
 └── globals.css # Global styles
 
 
 **Key File Responsibilities (MVP):**
 
-*   `src/server/api/routers/jdResume.ts` (tRPC Router): Contains procedures to store and retrieve the single current copy-pasted JD/Resume text for the logged-in user in the database.
-*   `src/server/api/routers/session.ts` (tRPC Router): 
+*   `src/server/api/routers/jdResume.ts` (tRPC Router):
+    *   `saveJdResumeText` procedure: Stores or updates the single current copy/pasted JD/Resume text for the logged-in user in the database.
+    *   `getJdResumeText` procedure: Retrieves the user's current JD/Resume text.
+*   `src/server/api/routers/session.ts` (tRPC Router):
     *   `createSession` procedure: Creates a new session record in the database linked to the user and their current JD/Resume text. Initializes session state, retrieves the Technical Lead persona prompt, and calls `lib/gemini.ts` to get the first question.
     *   `submitAnswerToSession` procedure: Receives user input for a session, adds it to history, calls `lib/gemini.ts` with context to get the AI's response (next question, feedback, alternative), updates session state in DB, and returns data to frontend.
-    *   `getSessionById` procedure: Retrieves session state from DB.
-    *   `getReportBySessionId` procedure: Fetches completed session data from DB and formats it for the report.
+    *   `getSessionById` procedure: Retrieves session state from DB. The frontend will use this data to construct the report view.
+    *   `getReportBySessionId` procedure: **OUT OF SCOPE FOR MVP.** The report will be constructed by the frontend using data primarily from `getSessionById`.
 
 *   `app/(protected)/dashboard/page.tsx`: Renders `MvpJdResumeInputForm.tsx` and `MvpSessionHistoryList.tsx`. Handles calling tRPC procedures via `utils/api.ts` to save/load the text and start sessions.
 *   `app/(protected)/sessions/[id]/page.tsx`: Renders `Sessions/InterviewUI/TextInterviewUI.tsx`. Manages client-side session state display (timer, current question) and sends user responses by calling tRPC procedures via `utils/api.ts`.
-*   `app/(protected)/sessions/[id]/report/page.tsx`: Fetches report data using tRPC procedures via `utils/api.ts` and renders it using `Sessions/ReportViewer.tsx`.
-*   `lib/db.ts`: Handles connecting to your chosen database to store `User`, `JdResumeText` (storing the raw text), `SessionData` (storing session state, transcript, Q&A history, and the basic feedback/alternative response data generated by the AI).
+*   `app/(protected)/sessions/[id]/report/page.tsx`: Fetches session data using tRPC procedures (primarily `getSessionById`) via `utils/api.ts` and renders it using `Sessions/ReportViewer.tsx`.
+*   `src/server/db.ts`: Exports the Prisma client instance (initialized from environment variables). Database models defined in `prisma/schema.prisma` include `User`, `JdResumeText`, and `SessionData`.
 
 ## 4. User Flow (MVP)
 
@@ -109,21 +116,21 @@ src/
 5.  On `/dashboard`, user sees two large text areas for "Job Description" and "Resume" and a button "Start Technical Lead Session" (rendered by `app/(protected)/dashboard/page.tsx` using `MvpJdResumeInputForm.tsx`). A list of past sessions is shown below (rendered by `MvpSessionHistoryList.tsx`).
 6.  User pastes JD text into the first box.
 7.  User pastes Resume text into the second box.
-8.  (Behind the scenes: The page might save this text using `/api/mvp-jd-resume` as the user types or when they click the button, linking it to their user ID in the database).
+8.  (Behind the scenes: The page might save this text using a tRPC call to `jdResume.saveJdResumeText` as the user types or when they click the button, linking it to their user ID in the database).
 9.  User clicks "Start Technical Lead Session".
-10. The frontend calls `/api/mvp-sessions` with the current JD/Resume text (or just the user ID if text is already saved).
+10. The frontend calls a tRPC procedure (e.g., `session.createSession`) which uses the current JD/Resume text.
 11. The backend creates a new session instance in the database, retrieves the Technical Lead persona prompt, and calls `lib/gemini.ts` to get the first question.
 12. The backend returns the new session ID and the first question.
 13. The frontend redirects the user to `/sessions/[session_id]`.
 14. On the interview page (`/sessions/[session_id]`), the user sees the Technical Lead persona's first question in a chat UI (`Sessions/InterviewUI/TextInterviewUI.tsx`). A timer is visible (`UI/Timer.tsx`).
 15. User types their answer into the text input area and submits.
-16. The frontend sends the user's response to `/api/mvp-sessions/[session_id]`.
+16. The frontend sends the user's response to a tRPC procedure (e.g., `session.submitAnswerToSession` with `session_id`).
 17. The backend receives the response, adds it to the session history, calls `lib/gemini.ts` with the updated history, JD/Resume text, and persona prompt to get the next question, feedback points, and suggested alternative for the just-submitted answer.
-18. The backend updates the session state and related data in the database and returns the next question data (and potentially the feedback/alternative response for the *previous* turn, though the report view is the main place for feedback).
+18. The backend updates the session state and related data in the database and returns the next question data.
 19. This Q&A loop continues until the timer runs out or the user clicks "End Session".
-20. When the session ends, the backend finalizes the session record and calculates any final summary report data.
+20. When the session ends, the backend finalizes the session record.
 21. The frontend redirects the user to `/sessions/[session_id]/report`.
-22. On the report page (`/sessions/[session_id]/report`), the frontend fetches the report data from `/api/mvp-sessions/[session_id]/report` and displays the transcript, overall summary, and question-by-question feedback with suggested alternatives (`Sessions/ReportViewer.tsx` using `QuestionFeedback.tsx`).
+22. On the report page (`/sessions/[session_id]/report`), the frontend fetches the report data using a tRPC procedure (e.g., `session.getSessionById`) and displays the transcript, overall summary, and question-by-question feedback with suggested alternatives (`Sessions/ReportViewer.tsx` using `QuestionFeedback.tsx`).
 23. A button on the report page links back to the `/dashboard`.
 24. On the `/dashboard`, the list of past sessions (`MvpSessionHistoryList.tsx`) now includes the just-completed session.
 
@@ -132,175 +139,115 @@ src/
 *   **Auth:**
     *   Successfully sign in with Google.
     *   Verify redirection to `/dashboard` after login.
-    *   Attempt to access `/dashboard`, `/sessions/*`, `/account`, `/subscription` (any protected route) while logged out – verify redirection to `/login`.
-*   **JD/Resume Input & Session Start:**
+    *   Attempt to access `/dashboard`, `/sessions/*` (any protected route) while logged out – verify redirection to `/login`.
+*   **JD/Resume Input & Session Start (via tRPC backend):**
     *   Paste text into both fields on `/dashboard`.
     *   Click "Start Technical Lead Session". Verify redirection to a new session page (`/sessions/[id]`).
-    *   Leave one or both fields empty and click "Start Session" – verify appropriate validation/error message.
-    *   Paste very long text into fields (basic stability check).
-    *   Log out and log back in – verify the last saved JD/Resume text is still displayed on the dashboard.
-*   **Interview Simulation (Text):**
-    *   Verify the first question appears after session starts.
+    *   Verify tRPC calls for saving text and creating session are successful.
+    *   Leave one or both fields empty and click "Start Session" – verify appropriate validation/error message (can be client-side or server-side via tRPC error).
+    *   Paste very long text into fields (basic stability check for tRPC calls).
+    *   Log out and log back in – verify the last saved JD/Resume text is still displayed on the dashboard (fetched via tRPC).
+*   **Interview Simulation (Text, via tRPC backend):**
+    *   Verify the first question appears after session starts (data from `createSession` tRPC call).
     *   Verify the session timer is visible and counting down.
-    *   Submit a text answer – verify a dynamic follow-up question appears.
+    *   Submit a text answer – verify a dynamic follow-up question appears (data from `submitAnswerToSession` tRPC call).
     *   Submit a series of answers – verify the conversation flows dynamically.
     *   Submit a very short/minimal answer. Verify the AI attempts a follow-up.
-    *   Submit an answer irrelevant to the question/JD. Verify the AI's response (e.g., tries to redirect, asks for clarification).
+    *   Submit an answer irrelevant to the question/JD. Verify the AI's response.
     *   Let the timer run out – verify the session ends and redirects to the report page.
     *   Click the "End Session" button – verify the session ends early and redirects to the report page.
     *   Verify the current interviewer name/title ("Technical Lead") is displayed during the session.
-*   **Post-Interview Report:**
+*   **Post-Interview Report (Data via tRPC backend):**
     *   Verify the report page loads after a session ends.
-    *   Verify the full text transcript of the Q&A is visible.
-    *   Verify an overall summary section is present.
+    *   Verify the full text transcript of the Q&A is visible (data from `getSessionById` tRPC call).
+    *   Verify an overall summary section is present (if implemented in MVP from session data).
     *   For each question asked:
         *   Verify the AI question is displayed.
         *   Verify the user's exact text response is displayed.
         *   Verify the "Basic Feedback" section is present and contains some relevant text.
         *   Verify the "Suggested Alternative Response" section is present and contains a plausible alternative answer.
-*   **Basic History:**
+*   **Basic History (Data via tRPC backend):**
     *   Complete at least one session.
     *   Return to the dashboard.
-    *   Verify the completed session appears in the session history list for the current JD/Resume text.
+    *   Verify the completed session appears in the session history list for the current JD/Resume text (fetched via tRPC).
     *   Click on a session in the history list – verify it loads the correct report page for that session.
-    *   (Optional but good): Modify the JD/Resume text after completing a session, then complete *another* session. Verify the history list for the *first* text entry still shows the original session, and the history for the *new* text entry shows the second session (requires basic association of sessions with the saved text entry).
 
 This MVP provides a solid foundation to test the core AI-driven interview mechanics before adding the significant complexity of file parsing, multiple dynamic personas, voice/avatar, and advanced subscription features.
 
 ## 6. Development Phases (Proposed)
 
-Based on the MVP definition and prioritizing core functionality before authentication, here is a possible breakdown into iterative development phases or sprints:
+Based on the MVP definition and prioritizing core functionality.
 
 **Phase 0: Project Setup & Core Dependencies**
 *   Ensure the T3 boilerplate is set up correctly.
 *   Configure database (e.g., Prisma).
 *   Integrate the Gemini API client (`lib/gemini.ts`).
 *   Set up environment variables (`.env`).
-*   Basic project structure setup as outlined in section 3.
+*   Basic project structure setup.
+*   **Status: DONE**
 
-## Phase 1: Core Backend Logic, AI Validation & Data Persistence
+**Phase 1: Core Backend Logic, AI Validation & Data Persistence (tRPC)**
 
-**Goal:** Validate the fundamental AI interaction logic (`lib/gemini.ts`) and establish persistent storage for session state from the outset. This is the highest-risk phase.
+**Goal:** Validate the fundamental AI interaction logic (`lib/gemini.ts`) and establish persistent storage for session state using tRPC procedures.
 
-**Key Features Implemented:** Core AI response generation (questions, feedback, alternatives), basic session state saving/loading.
+**Key Features Implemented:** Core AI response generation, basic session state saving/loading via tRPC, Persona service.
 
-**Progress Update:** The core helper functions in `lib/gemini.ts` (`buildSystemInstruction`, `buildPromptContents`, `parseAiResponse`) have been implemented and unit tested. The `getFirstQuestion` function has also been implemented, unit tested, and its integration with the live Gemini API has been successfully validated (spike test passed), confirming API key setup and basic prompt viability. `continueInterview` is implemented and unit tested, with its integration test pending.
+**Progress Update:**
+*   Core helper functions in `lib/gemini.ts` (`buildSystemInstruction`, `buildPromptContents`, `parseAiResponse`) implemented and unit tested.
+*   `getFirstQuestion` and `continueInterview` in `lib/gemini.ts` implemented, unit tested, and integration tested with live Gemini API.
+*   `lib/personaService.ts` implemented and unit tested.
+*   `src/server/db.ts` (Prisma client) setup and CRUD operations for core models (`User`, `JdResumeText`, `SessionData`) tested.
+*   `src/server/api/routers/session.ts` tRPC router for `createSession`, `getSessionById`, `submitAnswerToSession` implemented and integration tested (mocking AI services).
+*   **Status: DONE**
 
-**Files to Create/Modify:**
-
-*   `prisma/schema.prisma`: Define database models for `User`, `MvpJdResumeText`, and `SessionData`.
-*   `lib/db.ts`: Implement or finalize the database connection using Prisma client.
-*   `lib/personaService.ts`: Implement the service to provide the hardcoded definition for the "Technical Lead" persona.
-*   `lib/gemini.ts`: Implement the core functions (already largely done).
-*   `src/server/api/routers/session.ts` (Initial version for `submitAnswerToSession` and `getSessionById` tRPC procedures):
-    *   Implement procedure logic for active sessions, calling `lib/gemini.ts` and `lib/personaService.ts`.
-    *   Handle database interaction for session state updates.
-
-**User Flow & Test Cases (Covered in this phase):**
-
-*   Backend processing of JD/Resume text (via parameters).
-*   Backend generation of initial and dynamic follow-up questions.
-*   Backend analysis of user responses and generation of feedback/alternatives (logic exists, but validation done via spike).
-*   Backend persistent storage of session state and conversation history (including generated feedback/alternatives per turn).
-*   Backend retrieval of basic session state.
-
----
-
-## Phase 2: Backend API Completion (tRPC)
+**Phase 2: Backend API Completion (tRPC)**
 
 **Goal:** Implement the remaining backend tRPC procedures required for the MVP flow.
 
-**Key Features Implemented:** Saving/Retrieving JD/Resume text, Session creation tRPC procedure, Report Data tRPC procedure.
+**Key Features Implemented:** Saving/Retrieving JD/Resume text via tRPC.
 
-**Files to Create/Modify:**
-
-*   `src/server/api/routers/jdResume.ts`: Implement tRPC procedures to save (e.g., `saveJdResume`) and retrieve (e.g., `getJdResumeByUserId`) the user's current JD/Resume text.
-*   `src/server/api/routers/session.ts` (Updates for `createSession` and `getReportBySessionId` tRPC procedures):
-    *   `createSession` procedure: Logic to create a new session, call `lib/gemini.ts.getFirstQuestion`, and save initial state.
-    *   `getReportBySessionId` procedure: Logic to fetch and format report data.
-
-**User Flow & Test Cases (Covered in this phase):**
-
-*   Saving and retrieving user's copy/pasted text on the backend.
-*   Backend creation of a new session instance in the database upon request.
-*   Backend fetching of all data needed to display the report from the database.
+**Progress Update:**
+*   `src/server/api/routers/jdResume.ts` tRPC router for `saveJdResumeText` and `getJdResumeText` implemented and integration tested.
+*   Full-flow backend integration test (`tests/server/routers/full-flow.integration.test.ts`) successfully implemented, testing `jdResumeRouter` and `sessionRouter` (with live AI calls) in sequence.
+*   `getReportBySessionId` procedure confirmed as **OUT OF SCOPE FOR MVP.**
+*   **Status: DONE**
 
 ---
 
-## Phase 3: Frontend Interview UI & Reporting
+**Phase 3: Frontend Interview UI & Reporting**
 
-**Goal:** Build the client-side interface for conducting text interviews and viewing reports, connecting them to the backend APIs.
+**Goal:** Build the client-side interface for conducting text interviews and viewing reports, connecting them to the backend tRPC procedures.
 
 **Key Features Implemented:** Text chat UI, Timer display, Report display (transcript, feedback, alternatives).
 
 **Files to Create/Modify:**
-
-*   `components/UI/Timer.tsx`: Simple React component to display a countdown timer.
-*   `components/Sessions/InterviewUI/TextInterviewUI.tsx`: React component for the chat interface.
-    *   Displays the conversation history (user and AI turns).
-    *   Displays the current AI question.
-    *   Provides a text input area for user responses.
-    *   Manages local UI state related to the chat (e.g., input text, loading state).
-    *   Calls the `/api/mvp-sessions/[id]` POST endpoint when the user submits an answer.
-    *   Receives and displays the next question from the API response.
-*   `components/Sessions/QuestionFeedback.tsx`: React component to display one Q&A pair from the report, including the AI question, user answer, basic feedback, and suggested alternative.
-*   `components/Sessions/ReportViewer.tsx`: React component to structure and display the full report.
-    *   Receives formatted report data (from `/api/mvp-sessions/[id]/report`) as props.
-    *   Displays the overall summary (simple placeholder for MVP).
-    *   Iterates through the Q&A history and renders `QuestionFeedback.tsx` for each turn.
-*   `app/(protected)/sessions/[id]/page.tsx`: Frontend page for the interview simulation.
-    *   Fetches initial session state (current question, timer start time) from `/api/mvp-sessions/[id]` GET endpoint on load.
-    *   Manages the session timer using `UI/Timer.tsx`.
-    *   Renders `TextInterviewUI.tsx`, passing necessary data and handlers (like the submit function that calls the backend API).
-    *   Implements the "End Session" button, calling the backend `/api/mvp-sessions/[id]` endpoint to signal termination and then redirecting to the report page.
-*   `app/(protected)/sessions/[id]/report/page.tsx`: Frontend page for viewing the report.
-    *   Fetches the report data from `/api/mvp-sessions/[id]/report` GET endpoint on load.
-    *   Renders `ReportViewer.tsx`, passing the fetched data.
-    *   Includes a button/link to navigate back to the dashboard.
-
-**User Flow & Test Cases (Covered in this phase):**
-
-*   Seeing the interview simulation page load with the first question.
-*   Interacting with the chat interface (typing answers, submitting).
-*   Seeing dynamic follow-up questions appear in the chat.
-*   Observing the timer counting down.
-*   Ending the session via button or timer timeout.
-*   Seeing the report page load correctly after a session.
-*   Viewing the transcript, basic feedback, and suggested alternatives in the report.
-*   Navigating from the report back to the dashboard (though dashboard content is minimal until Phase 4).
+*   `components/UI/Timer.tsx`
+*   `components/Sessions/InterviewUI/TextInterviewUI.tsx`
+*   `components/Sessions/QuestionFeedback.tsx`
+*   `components/Sessions/ReportViewer.tsx`
+*   `app/(protected)/sessions/[id]/page.tsx`
+*   `app/(protected)/sessions/[id]/report/page.tsx`
+*   `utils/api.ts` (tRPC client setup and typed helper functions)
+*   **Status: NOT STARTED**
 
 ---
 
-## Phase 4: Dashboard, Basic History & Authentication
+**Phase 4: Dashboard, Basic History & Authentication**
 
 **Goal:** Implement user authentication, secure the application, and build the dashboard as the entry point for managing JD/Resume text and viewing past sessions.
 
-**Key Features Implemented:** User Authentication (Google), Protected Routes, Copy/Paste Input Form, Session History List (linked to current text and user).
+**Key Features Implemented:** User Authentication (Google), Protected Routes, Copy/Paste Input Form, Session History List.
 
 **Files to Create/Modify:**
-
-*   `lib/auth.ts`: Configure NextAuth with Google Provider. Define session callbacks to include user ID.
-*   `app/api/auth/[...nextauth]/route.ts`: Implement the NextAuth API route handler.
-*   `middleware.ts`: Implement Next.js middleware to protect the `/(protected)` route group, redirecting unauthenticated users to `/login`.
-*   `components/Auth/GoogleSignInButton.tsx`: Simple component to initiate Google OAuth flow.
-*   `components/Auth/SessionProvider.tsx`: Client component to wrap the app/layout and provide session context via `useSession`.
-*   `app/login/page.tsx`: Frontend login page rendering `GoogleSignInButton.tsx`.
-*   `app/(protected)/layout.tsx`: Layout file for protected routes, using `SessionProvider` and potentially checking session status to display loading/access denied states or trigger middleware.
-*   `app/page.tsx`: Root landing page. Add logic to check authentication status (e.g., using `useSession` or server-side check) and redirect to `/dashboard` if authenticated, or `/login` otherwise.
-*   **Update all backend APIs (`mvp-jd-resume`, `mvp-sessions`, `mvp-sessions/[id]`, `mvp-sessions/[id]/report`):** Modify these APIs to retrieve the authenticated user's ID from the session (`auth().userId` or similar depending on NextAuth setup) and use this ID to filter database queries and associate new data (JD/Resume text, sessions) with the correct user. Data is now scoped per user.
-*   **Update all frontend pages/components calling APIs:** Modify `utils/api.ts` calls and the pages/components that use them (`app/(protected)/dashboard/page.tsx`, `app/(protected)/sessions/[id]/page.tsx`, `app/(protected)/sessions/[id]/report/page.tsx`) to correctly pass/handle user context, typically implicitly handled by NextAuth headers/cookies when calling `/api` routes.
-*   `components/MvpJdResumeInputForm.tsx`: React component for the copy/paste text areas and "Start Session" button. Calls `utils/api.ts` functions (`saveMvpJdResumeText`, `createMvpSession`). Should load existing text using `loadMvpJdResumeText` on mount.
-*   `components/MvpSessionHistoryList.tsx`: React component to display the list of past sessions. Calls a new `utils/api.ts` function (`listMvpSessions`) which calls a new or modified backend API endpoint (e.g., add GET to `/api/mvp-sessions` or a new `/api/mvp-sessions/list`) to fetch sessions *for the current user* associated with their *current* JD/Resume text. Displays session entries and links to the report pages.
-*   `app/(protected)/dashboard/page.tsx`: Frontend dashboard page. Fetches user's current JD/Resume text and list of past sessions using the updated `utils/api.ts` functions. Renders `MvpJdResumeInputForm.tsx` and `MvpSessionHistoryList.tsx`.
-
-**User Flow & Test Cases (Covered in this phase):**
-
-*   Successfully signing in with Google.
-*   Being redirected to `/dashboard` after sign-in.
-*   Being redirected to `/login` if trying to access protected routes while logged out.
-*   Copying/pasting JD/Resume text and saving it.
-*   Seeing the last saved JD/Resume text persist after logging out and back in.
-*   Starting a session from the dashboard using the current text.
-*   Seeing completed sessions listed in the history on the dashboard.
-*   Clicking a history item to view the session report.
-*   Verifying that sessions and JD/Resume text are specific to the logged-in user and not visible to others.
+*   `lib/auth.ts` / `src/server/auth/` (NextAuth config)
+*   `app/api/auth/[...nextauth]/route.ts`
+*   `middleware.ts`
+*   `components/Auth/GoogleSignInButton.tsx`
+*   `components/Auth/SessionProvider.tsx`
+*   `app/login/page.tsx`
+*   `app/(protected)/layout.tsx`
+*   `app/page.tsx` (auth redirection)
+*   `components/MvpJdResumeInputForm.tsx`
+*   `components/MvpSessionHistoryList.tsx`
+*   `app/(protected)/dashboard/page.tsx`
+*   **Status: NOT STARTED**
