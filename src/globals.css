@@ -4,6 +4,11 @@
 
 /* src/globals.css */
 
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
 /* Define color variables for light mode (default) */
 :root {
   --background-color: #ffffff;
