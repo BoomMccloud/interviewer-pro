@@ -1,0 +1,92 @@
+/* src/components/Sessions/InterviewUI/TextInterviewUI.module.css */
+
+.chatContainer {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 200px); /* Example height, adjust as needed */
+  max-width: 800px;
+  margin: 0 auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: var(--background-color);
+}
+
+.personaHeader {
+  padding: 0.75rem 1rem;
+  background-color: var(--secondary-color);
+  border-bottom: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.personaHeader h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-color);
+}
+
+.messagesList {
+  flex-grow: 1;
+  padding: 1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.messageBubble {
+  padding: 0.6rem 1rem;
+  border-radius: 18px;
+  max-width: 75%;
+  word-wrap: break-word;
+}
+
+.messageText {
+  margin: 0 0 0.25rem 0;
+  line-height: 1.4;
+  font-size: 0.95rem;
+}
+
+.timestamp {
+  font-size: 0.7rem;
+  color: var(--text-color);
+  opacity: 0.7;
+  display: block;
+  text-align: right;
+}
+
+.userMessage {
+  background-color: var(--primary-color);
+  color: var(--button-text-color); /* Typically white or light text on primary color */
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+
+.userMessage .timestamp {
+  color: var(--button-text-color); /* Ensure timestamp is also readable */
+  opacity: 0.8;
+}
+
+.aiMessage {
+  background-color: var(--secondary-color);
+  color: var(--text-color);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+
+.inputArea {
+  display: flex;
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+  background-color: var(--background-color); /* Ensure input area matches theme */
+}
+
+.inputArea textarea {
+  flex-grow: 1;
+  margin-bottom: 0; /* Override global textarea margin if needed */
+  margin-right: 0.5rem;
+  border-radius: 6px; /* Keep consistent with other inputs */
+  resize: none; /* Prevent manual resizing if desired */
+}
+
+/* The .button class from globals.css will style the send button */ 
