@@ -8,8 +8,12 @@ export default async function Home() {
 
   if (session?.user) {
     redirect('/dashboard');
+  } else {
+    // Redirect unauthenticated users to the login page
+    redirect('/login');
   }
 
+  // The content below will not be reached if redirection occurs
   return (
     <HydrateClient>
       <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#2e026d] to-[#15162c] text-white">
