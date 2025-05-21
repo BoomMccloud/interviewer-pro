@@ -2,6 +2,8 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "CommonJS",
-    "jsx": "react-jsx"
-  }
+    "jsx": "react-jsx",
+    "types": ["jest", "jest-dom", "node"]
+  },
+  "include": ["./jest.setup.ts", "./tests/**/*.ts", "./tests/**/*.tsx", "src/**/*.ts", "src/**/*.tsx"]
 } 

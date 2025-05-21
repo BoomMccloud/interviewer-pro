@@ -1,6 +1,7 @@
 import { sessionRouter } from "~/server/api/routers/session";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 import { jdResumeRouter } from "~/server/api/routers/jdResume";
+import { postRouter } from "~/server/api/routers/post";
 
 /**
  * This is the primary router for your server.
@@ -10,6 +11,7 @@ import { jdResumeRouter } from "~/server/api/routers/jdResume";
 export const appRouter = createTRPCRouter({
   session: sessionRouter,
   jdResume: jdResumeRouter,
+  post: postRouter,
 });
 
 // export type definition of API
