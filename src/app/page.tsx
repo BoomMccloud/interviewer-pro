@@ -1,15 +1,22 @@
 import Link from "next/link";
-import { auth } from "~/lib/auth";
+// import { auth } from "~/lib/auth"; // Replaced by getSessionForTest
+import { getSessionForTest } from "~/lib/test-auth-utils";
 import { api, HydrateClient } from "~/trpc/server";
 import { redirect } from 'next/navigation';
 
 export default async function Home() {
-  const session = await auth();
+  const session = await getSessionForTest();
+
+  // For debugging in E2E test mode
+  if (process.env.E2E_TESTING === 'true') {
+    console.log(`[Home Page] E2E_TESTING=${process.env.E2E_TESTING}, Session: ${session ? 'Authenticated' : 'Unauthenticated'}`);
+  }
 
   if (session?.user) {
+    if (process.env.E2E_TESTING === 'true') console.log('[Home Page] E2E Test Mode: Authenticated, redirecting to /dashboard');
     redirect('/dashboard');
   } else {
-    // Redirect unauthenticated users to the login page
+    if (process.env.E2E_TESTING === 'true') console.log('[Home Page] E2E Test Mode: Unauthenticated, redirecting to /login');
     redirect('/login');
   }
 
