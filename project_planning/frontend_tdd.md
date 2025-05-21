@@ -28,12 +28,12 @@ For each specific implementation task:
 *   **Tasks & TDD Steps:**
 
     1.  **Styling Setup & Basic UI Components (`src/components/UI/`):**
-        *   **TDD:** Write **Component Tests** using React Testing Library for `Button.tsx`, `Input.tsx`, `Spinner.tsx`, `Timer.tsx`.
-            *   *For Button:* Test rendering children, asserting the correct HTML tag, testing the `onClick` prop is called when clicked. (RED -> GREEN -> REFACTOR)
-            *   *For Input:* Test rendering with different props (`placeholder`, `value`), testing `onChange` prop is called on input change. (RED -> GREEN -> REFACTOR)
-            *   *For Timer:* Test rendering the time format correctly, testing basic countdown logic (using Jest fake timers). (RED -> GREEN -> REFACTOR)
-            *   *For Spinner:* Test rendering, potentially different sizes/styles via props. (RED -> GREEN -> REFACTOR)
-        *   *Implementation:* Write the component code based on the tests.
+        *   **TDD:** [x] Write **Component Tests** using React Testing Library for `Button.tsx`, `Input.tsx`, `Spinner.tsx`, `Timer.tsx`. (Completed)
+            *   [x] *For Button:* Test rendering children, asserting the correct HTML tag, testing the `onClick` prop is called when clicked. (RED -> GREEN -> REFACTOR) (Completed)
+            *   [x] *For Input:* Test rendering with different props (`placeholder`, `value`), testing `onChange` prop is called on input change. (RED -> GREEN -> REFACTOR) (Completed)
+            *   [x] *For Timer:* Test rendering the time format correctly, testing basic countdown logic (using Jest fake timers). (RED -> GREEN -> REFACTOR) (Completed)
+            *   [x] *For Spinner:* Test rendering, potentially different sizes/styles via props. (RED -> GREEN -> REFACTOR) (Completed)
+        *   *Implementation:* [x] Write the component code based on the tests. (Completed)
 
     2.  **Authentication Setup (`lib/auth.ts`, `app/api/auth/...`, `middleware.ts`, `login/page.tsx`, `app/page.tsx`, `app/(protected)/layout.tsx`):**
         *   **TDD:**

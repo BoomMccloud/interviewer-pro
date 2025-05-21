@@ -13,10 +13,10 @@ This plan intertwines the goals of establishing look, consistent CSS, UX flow, a
 *   **Goal:** Establish the core technical plumbing for visual consistency, security, and reliable backend communication from day one.
 *   **Tasks:**
     1.  **Styling Setup:**
-        *   Choose your CSS approach (e.g., Tailwind CSS, CSS Modules).
-        *   Set up global styles (`globals.css` or equivalent).
-        *   Create a directory for reusable UI components (`src/components/UI/`).
-        *   Implement basic, generic components within `components/UI/`: `Button.tsx`, `Input.tsx`, `Spinner.tsx`, `Timer.tsx`. Focus purely on presentation, basic props (e.g., `children`, `onClick`), and styling.
+        *   [x] Choose your CSS approach (e.g., Tailwind CSS, CSS Modules). (Assumed Tailwind based on project files)
+        *   [x] Set up global styles (`globals.css` or equivalent). (Assumed complete)
+        *   [x] Create a directory for reusable UI components (`src/components/UI/`). (Completed)
+        *   [x] Implement basic, generic components within `components/UI/`: `Button.tsx`, `Input.tsx`, `Spinner.tsx`, `Timer.tsx`. Focus purely on presentation, basic props (e.g., `children`, `onClick`), and styling. (Completed)
     2.  **Authentication Setup:**
         *   Implement the NextAuth configuration in `src/lib/auth.ts`.
         *   Set up the NextAuth API route handler: `src/app/api/auth/[...nextauth]/route.ts`.

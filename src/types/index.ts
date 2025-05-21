@@ -28,28 +28,17 @@ export interface Persona {
 export type PersonaId = 'technical-lead'; 
 
 
-// --- Renaming Prisma's generated types for clarity in this file, if preferred, or use directly ---
-// Alternatively, you can use User, JdResumeText, SessionData directly from @prisma/client where needed.
-// For this example, we'll alias them if we want to keep "Mvp" prefix in *this file's* exports for some reason,
-// but it's often cleaner to just use the Prisma names directly in consuming code.
-// For now, let's assume we'll use Prisma's names directly and remove the Mvp-prefixed ones.
+// --- Prisma Model Zod Schemas ---
+// Define Zod schemas for Prisma models used in API input/output validation
 
-// export type MvpUser = User; // Now using Prisma's User directly
-// export type MvpJdResumeText = JdResumeText; // Now using Prisma's JdResumeText directly
-// export type MvpSessionData = SessionData; // Now using Prisma's SessionData directly
-
-// --- AI Response & Feedback Types ---
-
-// Represents the structured output expected from the AI after parsing its raw response
-export interface MvpAiResponse {
-  nextQuestion: string; // The question the AI asks next
-  analysis: string; // AI's analysis of the user's *previous* answer
-  feedbackPoints: string[]; // Specific points of feedback for the *previous* answer
-  suggestedAlternative: string; // A suggested better answer for the *previous* question
-}
-
-
-// --- Session History & State Types ---
+export const zodJdResumeText = z.object({
+  id: z.string(),
+  userId: z.string(),
+  jdText: z.string(),
+  resumeText: z.string(),
+  createdAt: z.coerce.date(), // Coerce to Date object from string/number
+  updatedAt: z.coerce.date(),
+});
 
 // Represents a single turn in the interview conversation history
 // Stored in the database as part of SessionData.history (JSON field)
@@ -82,6 +71,22 @@ export const zodMvpSessionTurn = z.object({
 
 export const zodMvpSessionTurnArray = z.array(zodMvpSessionTurn);
 
+// Define Zod schema for SessionData
+export const zodSessionData = z.object({
+  id: z.string(),
+  userId: z.string(),
+  personaId: z.string(),
+  jdResumeTextId: z.string(),
+  // The history field is stored as JSON in Prisma, but we expect an array of MvpSessionTurn objects
+  history: zodMvpSessionTurnArray, // Use the previously defined schema for turns
+  durationInSeconds: z.number(),
+  overallSummary: z.string().nullable(),
+  startTime: z.coerce.date(),
+  endTime: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+
 // MvpSessionData is now imported from @prisma/client as SessionData.
 // Its `history` field will be of type `Prisma.JsonValue`.
 // In your application logic, you will cast this to `MvpSessionTurn[]`.
@@ -95,14 +100,26 @@ export const zodMvpSessionTurnArray = z.array(zodMvpSessionTurn);
 export interface MvpReportData {
     sessionId: string;
     // status: SessionData['status']; // Status was removed, derived from endTime
-    startTime: string; // Should be Date, convert to string in API response if needed
-    endTime?: string | null; // Align with SessionData['endTime'] (Date | null)
+    startTime: Date; // Changed to Date to match Zod schema
+    endTime?: Date | null; // Align with SessionData['endTime'] (Date | null)
     durationConfigured: number; // Corresponds to SessionData['durationInSeconds']
     durationActual?: number; // To be calculated
     personaName: string; // Will need to map SessionData['personaId'] to a name
     overallSummary?: string | null; // Align with SessionData['overallSummary']
     turns: Array<MvpSessionTurn>; 
 }
+
+// Define Zod schema for MvpReportData
+export const zodMvpReportData = z.object({
+  sessionId: z.string(),
+  startTime: z.coerce.date(), // Expecting ISO string from API, coerce to Date
+  endTime: z.coerce.date().nullable(),
+  durationConfigured: z.number(),
+  durationActual: z.number().optional(),
+  personaName: z.string(),
+  overallSummary: z.string().nullable().optional(),
+  turns: z.array(zodMvpSessionTurn), // Use the schema for individual turns
+});
 
 // Exporting the Prisma generated types directly if they are to be used project-wide
 // This makes it easy to import User, JdResumeText, SessionData from 'src/types'
