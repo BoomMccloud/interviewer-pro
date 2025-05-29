@@ -68,6 +68,37 @@ export const sessionRouter = createTRPCRouter({
       };
     }),
 
+  /**
+   * Lists all sessions for the current user's JD/Resume text.
+   * Returns an array of SessionData objects for the authenticated user.
+   */
+  listForCurrentText: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session.user.id;
+
+    // First, find the user's current JD/Resume text
+    const jdResumeRecord = await db.jdResumeText.findFirst({
+      where: { userId },
+    });
+
+    if (!jdResumeRecord) {
+      // If no JD/Resume text exists, return empty array
+      return [];
+    }
+
+    // Find all sessions for this JD/Resume text
+    const sessions = await db.sessionData.findMany({
+      where: {
+        userId,
+        jdResumeTextId: jdResumeRecord.id,
+      },
+      orderBy: {
+        createdAt: 'desc', // Most recent first
+      },
+    });
+
+    return sessions;
+  }),
+
   // Placeholder for getSessionById
   getSessionById: protectedProcedure
     .input(z.object({ sessionId: z.string() }))

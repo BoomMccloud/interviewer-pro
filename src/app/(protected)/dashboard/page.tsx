@@ -1,135 +1,145 @@
 /**
  * @fileoverview The main dashboard page for authenticated users.
  * Displays the JD/Resume input form and the user's session history.
- * Handles initial data loading and orchestrates interactions with child components and APIs.
+ * Handles initial data loading and orchestrates interactions with child components using tRPC hooks.
  */
 
 'use client'; // This is a client component
 
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation'; // Import useRouter for client-side navigation
+import React from 'react';
+import { useRouter } from 'next/navigation';
 
-// Assuming these components will be created later
-// import MvpJdResumeInputForm from '~/components/MvpJdResumeInputForm';
-// import MvpSessionHistoryList from '~/components/MvpSessionHistoryList';
-// Assuming a shared Spinner component exists
-import Spinner from '~/components/UI/Spinner'; // Update path if needed
+// Real components
+import MvpJdResumeInputForm from '~/components/MvpJdResumeInputForm';
+import MvpSessionHistoryList from '~/components/MvpSessionHistoryList';
+import Spinner from '~/components/UI/Spinner';
 
-// Assuming API utility functions are available here
-// import { utils } from '~/utils/api';
-
-// Placeholder components for now to allow the page structure to be built
-const MvpJdResumeInputForm = () => <div>JD/Resume Input Form Placeholder</div>;
-const MvpSessionHistoryList = () => <div>Session History List Placeholder</div>;
-
+// tRPC hooks and types
+import { api } from '~/trpc/react';
+import type { MvpSessionTurn } from '~/types';
+import { zodMvpSessionTurnArray } from '~/types';
 
 export default function DashboardPage() {
-  const router = useRouter(); // Initialize useRouter
+  const router = useRouter();
+  const utils = api.useUtils();
 
-  // State to manage loading of initial data
-  const [isLoading, setIsLoading] = useState(true);
-  // State to hold fetched data (placeholders for now)
-  const [jdResumeText, setJdResumeText] = useState({ jdText: '', resumeText: '' });
-  const [sessionHistory, setSessionHistory] = useState([]);
+  // Fetch data using tRPC hooks with proper patterns
+  const { 
+    data: jdResumeText, 
+    isLoading: isLoadingJdResume, 
+    error: jdResumeError,
+    refetch: refetchJdResume
+  } = api.jdResume.getJdResumeText.useQuery();
 
-  useEffect(() => {
-    // Simulate fetching data
-    const fetchData = async () => {
-      setIsLoading(true); // Set loading state to true
+  const { 
+    data: rawSessionHistory = [], 
+    isLoading: isLoadingSessions, 
+    error: sessionsError,
+    refetch: refetchSessions
+  } = api.session.listForCurrentText.useQuery();
 
-      // In a real implementation, you would call your API utilities here:
-      // try {
-      //   const [jdResumeData, sessionsData] = await Promise.all([
-      //     utils.getMvpJdResumeText(),
-      //     utils.listMvpSessionsForCurrentText(),
-      //   ]);
-      //   setJdResumeText(jdResumeData);
-      //   setSessionHistory(sessionsData);
-      // } catch (error) {
-      //   console.error('Failed to fetch dashboard data:', error);
-      //   // Handle error state if needed
-      // } finally {
-      //   setIsLoading(false); // Set loading state to false after fetch completes
-      // }
+  // Transform session history to match component expectations
+  const sessionHistory = React.useMemo(() => {
+    return rawSessionHistory.map(session => {
+      let history: MvpSessionTurn[] = [];
+      if (session.history) {
+        try {
+          history = zodMvpSessionTurnArray.parse(session.history);
+        } catch (error) {
+          console.error('Failed to parse session history:', error);
+          history = [];
+        }
+      }
+      return {
+        ...session,
+        history,
+      };
+    });
+  }, [rawSessionHistory]);
 
-      // --- Placeholder simulation ---
-      // Simulate a network delay before setting loading to false
-       await new Promise(resolve => setTimeout(resolve, 300)); // Simulate minimum loading time
-      setIsLoading(false); // Set loading state to false after simulated fetch
-      // --- End Placeholder simulation ---
-    };
+  // Combined loading and error states
+  const isLoading = isLoadingJdResume || isLoadingSessions;
+  const error = jdResumeError ?? sessionsError;
 
-    fetchData();
-  }, []); // Empty dependency array means this runs once on mount
-
-  // Handlers for form interactions (placeholders for now)
-  const handleSaveText = async (data: { jdText: string; resumeText: string }) => {
-    console.log('Saving text (placeholder):', data);
-    // try {
-    //   await utils.saveMvpJdResumeText(data);
-    //   // Handle success
-    // } catch (error) {
-    //   console.error('Failed to save text:', error);
-    //   // Handle error
-    // }
+  // Handlers for form interactions
+  const handleSaveSuccess = async () => {
+    // Invalidate and refetch both queries when text is saved
+    await utils.jdResume.getJdResumeText.invalidate();
+    await utils.session.listForCurrentText.invalidate();
   };
 
-  const handleStartSession = async () => {
-    console.log('Starting session (placeholder)');
-    // try {
-    //   const newSession = await utils.createMvpSession();
-    //   router.push(`/sessions/${newSession.sessionId}`);
-    // } catch (error) {
-    //   console.error('Failed to create session:', error);
-    //   // Handle error
-    // }
+  const handleStartSessionSuccess = () => {
+    // Navigation is handled by the MvpJdResumeInputForm component
+    // We could also invalidate queries here if needed
   };
 
-  // Handler for clicking on a history item (placeholder for now)
-  const handleHistoryItemClick = (sessionId: string) => {
-     console.log('Navigating to session report (placeholder):', sessionId);
-     router.push(`/sessions/${sessionId}/report`);
+  const handleSessionClick = (sessionId: string) => {
+    router.push(`/sessions/${sessionId}`);
   };
 
+  const handleRetry = async () => {
+    await Promise.all([
+      refetchJdResume(),
+      refetchSessions(),
+    ]);
+  };
+
+  // Show loading spinner while data is loading
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Spinner />
+          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">Error loading dashboard:</p>
+          <p className="text-gray-600 mb-4">{error.message}</p>
+          <button 
+            onClick={handleRetry}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-4xl mx-auto px-4">
+        <h1 className="text-3xl font-bold text-gray-900 mb-8">Dashboard</h1>
+        
+        {/* Job Description & Resume Input Section */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <h2 className="text-xl font-semibold text-gray-800 mb-6">Job Description & Resume</h2>
+          <MvpJdResumeInputForm
+            initialJdText={jdResumeText?.jdText ?? ''}
+            initialResumeText={jdResumeText?.resumeText ?? ''}
+            onSaveSuccess={handleSaveSuccess}
+            onStartSessionSuccess={handleStartSessionSuccess}
+          />
+        </div>
 
-      {/* Conditional rendering based on loading state */}
-      {isLoading ? (
-        // Assuming Spinner component has a data-testid="spinner"
-        <Spinner />
-      ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h2 className="text-xl font-semibold mb-3">Job Description & Resume</h2>
-              <MvpJdResumeInputForm
-                // Pass initial data and save handler (placeholders)
-                initialJdText={jdResumeText.jdText}
-                initialResumeText={jdResumeText.resumeText}
-                onSave={handleSaveText}
-                onStartSession={handleStartSession}
-              />
-            </div>
-            <div>
-               <h2 className="text-xl font-semibold mb-3">Session History</h2>
-               <MvpSessionHistoryList
-                 // Pass session history data and click handler (placeholders)
-                 sessions={sessionHistory}
-                 onSessionClick={handleHistoryItemClick}
-               />
-            </div>
-          </div>
-        </>
-      )}
+        {/* Session History Section */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-6">Session History</h2>
+          <MvpSessionHistoryList
+            sessions={sessionHistory}
+            onSessionClick={handleSessionClick}
+            isLoading={false} // Loading handled at page level
+          />
+        </div>
+      </div>
     </div>
   );
-}
-
-// Minimal Spinner component placeholder if not already in UI library
-// You would typically import this from your UI library
-// const Spinner = ({ 'data-testid': dataTestId }: { 'data-testid'?: string }) => (
-//   <div data-testid={dataTestId}>Loading...</div>
-// ); 
+} 

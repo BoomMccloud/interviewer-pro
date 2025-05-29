@@ -1,8 +1,8 @@
 /**
- * @fileoverview Utility functions for simulating authentication in E2E tests.
+ * @fileoverview Utility functions for simulating authentication in E2E tests and development.
  *
- * Provides a mock session object and a function to conditionally return
- * the mock session or the real session based on an environment variable.
+ * Provides mock session objects and functions to conditionally return
+ * mock sessions or the real session based on environment variables.
  */
 
 import { auth as realAuth } from '~/lib/auth'; // Import the real auth handler
@@ -19,19 +19,40 @@ const mockE2eSession: Session = {
   expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Set a future expiration
 };
 
+// Define a development user session for quick testing
+const mockDevSession: Session = {
+  user: {
+    id: 'dev-user-123',
+    name: 'Dev User',
+    email: 'dev@example.com',
+    image: null,
+  },
+  expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+};
+
 /**
- * Conditionally returns a mock session or the real session based on the E2E_TESTING environment variable.
+ * Conditionally returns a mock session or the real session based on environment variables.
  * Use this function in server-side contexts (middleware, server components, route handlers)
  * instead of directly calling `auth()` or `realAuth()`.
+ * 
+ * Environment variable priority:
+ * 1. E2E_TESTING=true - Returns E2E test session
+ * 2. DEV_BYPASS_AUTH=true - Returns development session  
+ * 3. Normal operation - Returns real NextAuth session
  */
 export const getSessionForTest = async (): Promise<Session | null> => {
-  // Check if we are in the E2E test environment
+  // Check if we are in the E2E test environment (highest priority)
   if (process.env.E2E_TESTING === 'true') {
     console.log('[AuthUtil] E2E Test Mode: Returning mock session.');
     return mockE2eSession;
-  } else {
-    // In normal operation, call the real NextAuth auth function
-    // console.log('[AuthUtil] Normal Mode: Calling real authentication.'); // Optional: for debugging normal flow
-    return realAuth();
   }
+  
+  // Check if we want to bypass auth for development (second priority)
+  if (process.env.DEV_BYPASS_AUTH === 'true') {
+    console.log('[AuthUtil] Development Mode: Bypassing auth with mock session.');
+    return mockDevSession;
+  }
+  
+  // In normal operation, call the real NextAuth auth function
+  return realAuth();
 }; 

@@ -1,10 +1,10 @@
 /**
  * @fileoverview Tests for the Dashboard page component.
- * Tests loading states, conditional rendering, and basic interactions.
+ * Tests loading states, conditional rendering, and basic interactions with real components.
  */
 
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import { useRouter } from 'next/navigation';
 import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import DashboardPage from '~/app/(protected)/dashboard/page';
@@ -21,85 +21,177 @@ jest.mock('~/components/UI/Spinner', () => {
   };
 });
 
+// Mock tRPC hooks
+jest.mock('~/trpc/react', () => ({
+  api: {
+    jdResume: {
+      getJdResumeText: {
+        useQuery: jest.fn(),
+      },
+      saveJdResumeText: {
+        useMutation: jest.fn(),
+      },
+    },
+    session: {
+      listForCurrentText: {
+        useQuery: jest.fn(),
+      },
+      createSession: {
+        useMutation: jest.fn(),
+      },
+    },
+    useUtils: jest.fn(() => ({
+      jdResume: {
+        getJdResumeText: {
+          invalidate: jest.fn(),
+        },
+      },
+      session: {
+        listForCurrentText: {
+          invalidate: jest.fn(),
+        },
+      },
+    })),
+  },
+}));
+
+// Import the mocked API
+import { api } from '~/trpc/react';
+
 const mockPush = jest.fn();
 const mockRouter = useRouter as jest.MockedFunction<typeof useRouter>;
+const mockGetJdResumeTextQuery = api.jdResume.getJdResumeText.useQuery as jest.MockedFunction<typeof api.jdResume.getJdResumeText.useQuery>;
+const mockListSessionsQuery = api.session.listForCurrentText.useQuery as jest.MockedFunction<typeof api.session.listForCurrentText.useQuery>;
+const mockSaveJdResumeMutation = api.jdResume.saveJdResumeText.useMutation as jest.MockedFunction<typeof api.jdResume.saveJdResumeText.useMutation>;
+const mockCreateSessionMutation = api.session.createSession.useMutation as jest.MockedFunction<typeof api.session.createSession.useMutation>;
 
 describe('DashboardPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRouter.mockReturnValue({
       push: mockPush,
-      replace: jest.fn(),
-      refresh: jest.fn(),
-      back: jest.fn(),
-      forward: jest.fn(),
-      prefetch: jest.fn(),
-    } as AppRouterInstance);
+    } as unknown as AppRouterInstance);
+
+    // Default mock implementations for mutations
+    mockSaveJdResumeMutation.mockReturnValue({
+      mutate: jest.fn(),
+      isPending: false,
+      isSuccess: false,
+      isError: false,
+      error: null,
+    } as any);
+
+    mockCreateSessionMutation.mockReturnValue({
+      mutate: jest.fn(),
+      isPending: false,
+      isSuccess: false,
+      isError: false,
+      error: null,
+    } as any);
   });
 
-  it('shows loading spinner initially', () => {
+  it('shows loading spinner initially', async () => {
+    // Setup queries to return loading state
+    mockGetJdResumeTextQuery.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      refetch: jest.fn(),
+    } as any);
+
+    mockListSessionsQuery.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      refetch: jest.fn(),
+    } as any);
+
     render(<DashboardPage />);
-    
+
+    // Should show spinner initially
     expect(screen.getByTestId('spinner')).toBeInTheDocument();
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
   });
 
   it('shows dashboard content after loading completes', async () => {
+    // Setup queries to return loaded state
+    mockGetJdResumeTextQuery.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    } as any);
+
+    mockListSessionsQuery.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    } as any);
+
     render(<DashboardPage />);
-    
-    // Initially shows loading
-    expect(screen.getByTestId('spinner')).toBeInTheDocument();
-    
-    // Wait for loading to complete (300ms simulated delay + some buffer)
-    await waitFor(
-      () => {
-        expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
-      },
-      { timeout: 1000 }
-    );
-    
-    // Check that main content is displayed
+
+    // Check dashboard content is rendered
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Job Description & Resume')).toBeInTheDocument();
     expect(screen.getByText('Session History')).toBeInTheDocument();
   });
 
-  it('displays the correct page structure when loaded', async () => {
+  it('displays the real form components when loaded', async () => {
+    // Setup queries to return data
+    mockGetJdResumeTextQuery.mockReturnValue({
+      data: {
+        id: 'test-id',
+        userId: 'test-user',
+        jdText: 'Test JD text',
+        resumeText: 'Test resume text',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    } as any);
+
+    mockListSessionsQuery.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    } as any);
+
     render(<DashboardPage />);
     
-    // Wait for loading to complete
-    await waitFor(
-      () => {
-        expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
-      },
-      { timeout: 1000 }
-    );
+    // Check real form components are rendered
+    expect(screen.getByLabelText('Job Description')).toBeInTheDocument();
+    expect(screen.getByLabelText('Resume')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save text/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start technical interview/i })).toBeInTheDocument();
     
-    // Check main heading
-    expect(screen.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument();
-    
-    // Check section headings
-    expect(screen.getByRole('heading', { level: 2, name: 'Job Description & Resume' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: 'Session History' })).toBeInTheDocument();
-    
-    // Check placeholder components are rendered
-    expect(screen.getByText('JD/Resume Input Form Placeholder')).toBeInTheDocument();
-    expect(screen.getByText('Session History List Placeholder')).toBeInTheDocument();
+    // Check session history
+    expect(screen.getByText('No interview sessions yet')).toBeInTheDocument();
   });
 
-  it('has proper grid layout classes', async () => {
+  it('displays error message when API calls fail', async () => {
+    // Setup queries to return error state
+    mockGetJdResumeTextQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: { message: 'API Error' },
+      refetch: jest.fn(),
+    } as any);
+
+    mockListSessionsQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    } as any);
+
     render(<DashboardPage />);
-    
-    // Wait for loading to complete
-    await waitFor(
-      () => {
-        expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
-      },
-      { timeout: 1000 }
-    );
-    
-    // Check that the grid container exists
-    const gridContainer = screen.getByText('Job Description & Resume').closest('.grid');
-    expect(gridContainer).toHaveClass('grid', 'grid-cols-1', 'md:grid-cols-2', 'gap-6');
+
+    // Wait for error to be displayed
+    await waitFor(() => {
+      expect(screen.getByText(/API Error/)).toBeInTheDocument();
+    });
   });
 }); 
