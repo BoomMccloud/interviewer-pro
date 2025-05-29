@@ -249,41 +249,180 @@ describe('Session tRPC Router', () => {
 
 ---
 
-## 2. Testing Frontend React Components
+## 2. Testing Frontend React Components (Updated Approach)
 
 Frontend component tests are run using `npm run test:frontend` which utilizes `jest.config.frontend.js` and `tsconfig.jest.json`.
 
 ### Key Principles & Tools:
 
-1.  **Location:** Test files (e.g., `Button.test.tsx`) can reside in `tests/frontend/` or alongside their components in `src/` (e.g., `src/components/UI/Button.test.tsx`). The `jest.config.frontend.js` `testMatch` pattern accommodates both. *Note: Encountered issues with Jest resolving paths containing parentheses like `(protected)`. Renaming test directories to remove such characters (e.g., `tests/frontend/protected/dashboard`) was necessary to get tests running reliably.*
+1.  **Location:** Test files (e.g., `dashboard.test.tsx`) can reside in `tests/frontend/` or alongside their components in `src/` (e.g., `src/components/UI/Button.test.tsx`). The `jest.config.frontend.js` `testMatch` pattern accommodates both. *Note: Encountered issues with Jest resolving paths containing parentheses like `(protected)`. Renaming test directories to remove such characters (e.g., `tests/frontend/protected/dashboard`) was necessary to get tests running reliably.*
 2.  **Libraries:**
     *   `@testing-library/react`: For rendering components and querying the DOM.
     *   `@testing-library/jest-dom`: For custom DOM matchers (e.g., `.toBeInTheDocument()`, `.toHaveClass()`). Imported via `jest.setup.ts`.
     *   `@testing-library/user-event`: (Recommended) For simulating user interactions more realistically than `fireEvent`.
-    *   **`msw` (Mock Service Worker):** **Recommended approach for mocking network requests (API calls)**. It intercepts actual HTTP requests made by your code (`fetch`, `axios`, etc.) at the network level, providing a more realistic and less brittle way to simulate API responses compared to mocking the API utility functions directly with `jest.mock()`.
 3.  **Imports:**
     *   Use path aliases like `~/*` for importing components into test files (e.g., `import Button from '~/components/UI/Button';`).
-    *   For files outside of `src` (like the MSW setup file in `tests/msw`), use relative paths from the test file's location, as path aliases like `~/*` are configured to point only to the `src` directory.
-4.  **MSW Setup:**
-    *   **Initialize Server:** The MSW server for the Node.js test environment is intended to be initialized once in `tests/msw/server.ts` using `setupServer`. This `server` instance is then imported into your test files.
-    *   **Lifecycle Hooks:** Use Jest's lifecycle hooks (`beforeAll`, `afterEach`, `afterAll`) in your test suite (`describe` block) to manage the MSW server:
-        *   `beforeAll(() => server.listen())`: Start the interception before any tests run.
-        *   `afterEach(() => server.resetHandlers())`: Reset request handlers after each test to ensure test isolation (handlers defined in one test don't affect others).
-        *   `afterAll(() => server.close())`: Stop the interception after all tests in the suite are finished.
-    *   **Defining Handlers:** Use `server.use(...handlers)` within individual tests (`it` blocks) or `beforeEach` blocks to define the specific mock API responses needed for that test scenario. Handlers defined with `server.use` in `beforeEach` will apply to all tests in the suite unless overridden in an `it` block.
-    *   **⚠️ Unresolved Issue:** As of recent development, a persistent "Cannot find module 'msw/node'" error (and subsequent errors related to MSW's internal dependencies like `@mswjs/interceptors/ClientRequest`) has been encountered when Jest attempts to load `tests/msw/server.ts`. Standard troubleshooting steps including adjusting `transformIgnorePatterns`, adding `moduleDirectories: ['node_modules']`, re-installing `msw`, and using explicit `moduleNameMapper` entries for `msw/node` did not resolve this. This indicates a potentially deeper environment-specific or configuration conflict affecting Jest's ability to resolve modules from within `node_modules` when initiated from this part of the test directory structure. **Automated frontend tests relying on MSW are currently blocked by this issue.** Manual testing or alternative mocking strategies may be necessary until this is resolved.
-5.  **Mocking Other Dependencies (`jest.mock()`):** For mocking other types of dependencies (e.g., React Context providers, specific hooks, non-network utility functions, third-party modules that don't make network requests like `next/navigation`), continue to use `jest.mock()` at the top level of your test file and manage mock implementations as needed.
-6.  **Test Structure (Conceptual):** When MSW is functional, frontend tests for components fetching data should be structured to:
-    *   Import the `server` instance from `tests/msw/server`.
-    *   Use `beforeAll`, `afterEach`, and `afterAll` hooks to manage the server's lifecycle.
-    *   Use `server.use()` within test cases or `beforeEach` to define specific API handlers that return the desired mock responses for that test scenario (e.g., success data, error response, delayed response).
-    *   Render the component using `@testing-library/react`.
-    *   Use `await waitFor()` or `findBy*` queries to wait for asynchronous operations (like data fetching) to complete and the UI to update based on the mocked response.
-    *   Assert on the rendered UI or interaction side effects.
-7.  **Querying Elements:**
-    *   Prioritize accessible queries: `getByRole`, `getByLabelText`, `getByPlaceholderText`, `getByText`, `getByDisplayValue`.
-    *   Use `getByTestId` as a last resort if accessible queries are not feasible.
-8.  **Assertions:** Use `expect` with matchers from Jest and `@testing-library/jest-dom`. For asynchronous actions like data fetching, use `waitFor` or `findBy*` queries from React Testing Library to wait for elements to appear after the async operation completes.
+4.  **Mocking Strategy:** **Mock at the component integration level** rather than at the network level. This includes:
+    *   **tRPC Hooks**: Mock `~/trpc/react` hooks directly to control data states
+    *   **Next.js Components**: Mock `next/navigation`, `next/image`, etc. as needed
+    *   **Custom Hooks**: Mock any custom hooks that make API calls or have side effects
+    *   **Third-party Libraries**: Mock external dependencies as needed
+
+### Recommended Testing Approach: Direct Hook/Component Mocking
+
+Based on successful implementation, the recommended approach for frontend testing is to mock dependencies directly rather than intercepting network requests.
+
+#### Example: Testing a Component with tRPC Integration
+
+```typescript
+// tests/frontend/dashboard.test.tsx
+import React from 'react';
+import { render, screen, waitFor } from '@testing-library/react';
+import { useRouter } from 'next/navigation';
+import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
+import DashboardPage from '~/app/(protected)/dashboard/page';
+
+// Mock Next.js router
+jest.mock('next/navigation', () => ({
+  useRouter: jest.fn(),
+}));
+
+// Mock tRPC hooks (when implemented)
+jest.mock('~/trpc/react', () => ({
+  api: {
+    session: {
+      getAll: {
+        useQuery: jest.fn(),
+      },
+    },
+    jdResumeText: {
+      getAll: {
+        useQuery: jest.fn(),
+      },
+    },
+  },
+}));
+
+const mockPush = jest.fn();
+const mockRouter = useRouter as jest.MockedFunction<typeof useRouter>;
+const mockApi = require('~/trpc/react').api as jest.Mocked<any>;
+
+describe('DashboardPage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRouter.mockReturnValue({
+      push: mockPush,
+      replace: jest.fn(),
+      refresh: jest.fn(),
+      back: jest.fn(),
+      forward: jest.fn(),
+      prefetch: jest.fn(),
+    } as AppRouterInstance);
+  });
+
+  it('shows loading state when data is loading', () => {
+    // Mock loading state
+    mockApi.session.getAll.useQuery.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    });
+    
+    mockApi.jdResumeText.getAll.useQuery.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    });
+
+    render(<DashboardPage />);
+    
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
+  });
+
+  it('shows data when loaded successfully', async () => {
+    // Mock successful data
+    mockApi.session.getAll.useQuery.mockReturnValue({
+      data: [{ id: '1', createdAt: new Date() }],
+      isLoading: false,
+      error: null,
+    });
+    
+    mockApi.jdResumeText.getAll.useQuery.mockReturnValue({
+      data: { jdText: 'Job description', resumeText: 'Resume text' },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<DashboardPage />);
+    
+    await waitFor(() => {
+      expect(screen.getByText(/dashboard/i)).toBeInTheDocument();
+    });
+  });
+});
+```
+
+#### Example: Testing Component Props and Interactions
+
+```typescript
+// tests/frontend/components/session-list.test.tsx
+import { render, screen, fireEvent } from '@testing-library/react';
+import SessionList from '~/components/SessionList';
+
+describe('SessionList', () => {
+  it('renders session list correctly', () => {
+    const mockSessions = [
+      { id: '1', createdAt: new Date('2023-01-01'), title: 'Session 1' },
+      { id: '2', createdAt: new Date('2023-01-02'), title: 'Session 2' },
+    ];
+    const mockOnClick = jest.fn();
+
+    render(<SessionList sessions={mockSessions} onSessionClick={mockOnClick} />);
+    
+    expect(screen.getAllByTestId('session-item')).toHaveLength(2);
+    expect(screen.getByText('Session 1')).toBeInTheDocument();
+  });
+
+  it('calls onClick handler when session is clicked', () => {
+    const mockSessions = [{ id: '1', createdAt: new Date(), title: 'Session 1' }];
+    const mockOnClick = jest.fn();
+
+    render(<SessionList sessions={mockSessions} onSessionClick={mockOnClick} />);
+    
+    fireEvent.click(screen.getByText('Session 1'));
+    
+    expect(mockOnClick).toHaveBeenCalledWith('1');
+  });
+});
+```
+
+### Test Structure Guidelines:
+
+1.  **Mock Setup:** Use `jest.mock()` at the top level for modules and dependencies
+2.  **Type Safety:** Use `jest.MockedFunction<typeof originalFunction>` for type-safe mocking
+3.  **Reset Mocks:** Use `jest.clearAllMocks()` in `beforeEach` to ensure test isolation
+4.  **Async Testing:** Use `waitFor()` for testing async behavior and state changes
+5.  **Queries:** Prioritize accessible queries: `getByRole`, `getByLabelText`, `getByText`, then `getByTestId` as fallback
+
+### Advantages of This Approach:
+
+1. **No complex environment setup**: No browser API polyfills needed
+2. **Fast execution**: Tests run quickly without network overhead
+3. **Predictable**: Complete control over data states and edge cases
+4. **Better Jest compatibility**: Works reliably with standard Jest configuration
+5. **Focused testing**: Tests component logic rather than network behavior
+6. **Easy debugging**: Clear, direct mocking with good error messages
+
+### Issues with Alternative Approaches:
+
+**MSW (Mock Service Worker) - Not Recommended:**
+During testing, MSW v2.8.6 with Jest and jsdom encountered multiple blocking issues:
+- `ReferenceError: TextEncoder is not defined` - Even with polyfills
+- `ReferenceError: BroadcastChannel is not defined` - Missing browser APIs
+- Complex setup requirements that conflict with Jest/Node.js environment
+- Poor compatibility between MSW v2 and jsdom test environment
+
+MSW may work better in browser-based testing environments (like Playwright), but for unit/integration tests with Jest, direct mocking is more reliable and maintainable.
 
 ---
 
