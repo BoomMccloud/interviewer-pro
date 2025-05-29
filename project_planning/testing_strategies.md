@@ -255,7 +255,7 @@ Frontend component tests are run using `npm run test:frontend` which utilizes `j
 
 ### Key Principles & Tools:
 
-1.  **Location:** Test files (e.g., `Button.test.tsx`) can reside in `tests/frontend/` or alongside their components in `src/` (e.g., `src/components/UI/Button.test.tsx`). The `jest.config.frontend.js` `testMatch` pattern accommodates both.
+1.  **Location:** Test files (e.g., `Button.test.tsx`) can reside in `tests/frontend/` or alongside their components in `src/` (e.g., `src/components/UI/Button.test.tsx`). The `jest.config.frontend.js` `testMatch` pattern accommodates both. *Note: Encountered issues with Jest resolving paths containing parentheses like `(protected)`. Renaming test directories to remove such characters (e.g., `tests/frontend/protected/dashboard`) was necessary to get tests running reliably.*
 2.  **Libraries:**
     *   `@testing-library/react`: For rendering components and querying the DOM.
     *   `@testing-library/jest-dom`: For custom DOM matchers (e.g., `.toBeInTheDocument()`, `.toHaveClass()`). Imported via `jest.setup.ts`.
@@ -263,64 +263,27 @@ Frontend component tests are run using `npm run test:frontend` which utilizes `j
     *   **`msw` (Mock Service Worker):** **Recommended approach for mocking network requests (API calls)**. It intercepts actual HTTP requests made by your code (`fetch`, `axios`, etc.) at the network level, providing a more realistic and less brittle way to simulate API responses compared to mocking the API utility functions directly with `jest.mock()`.
 3.  **Imports:**
     *   Use path aliases like `~/*` for importing components into test files (e.g., `import Button from '~/components/UI/Button';`).
-4.  **Mocking Dependencies:**
-    *   **Network Requests (`msw`):** For components that fetch data from your backend APIs or external services, set up `msw` request handlers before your tests run. This allows your component code to call your API utility functions normally (e.g., `utils/api.ts`), and `msw` will intercept the underlying `fetch` or HTTP request to return your defined mock data or simulate errors. This approach is generally preferred for APIs over mocking the utility functions directly.
-    *   **Other Dependencies (`jest.mock()`):** For mocking other types of dependencies (e.g., React Context providers, specific hooks, non-network utility functions, third-party modules that don't make network requests), continue to use `jest.mock()` at the top level of your test file and manage mock implementations as needed.
-5.  **Test Structure:**
-    ```typescript
-    import React from 'react';
-    import { render, screen, fireEvent, waitFor } from '@testing-library/react'; // Added waitFor for async
-    // import userEvent from '@testing-library/user-event'; // If using user-event
-    import '@testing-library/jest-dom'; // Usually not needed here if jest.setup.ts is configured
-    import MyComponent from '~/components/MyComponent';
-
-    // Example MSW setup (needs to be configured before tests run, e.g., in setupFilesAfterEnv or per describe block)
-    // import { server } from '~/tests/msw/server'; // Assuming you have an MSW setup file
-
-    // describe('MyComponent', () => {
-    //   beforeAll(() => server.listen());
-    //   afterEach(() => server.resetHandlers());
-    //   afterAll(() => server.close());
-
-    //   it('should render data fetched from API', async () => {
-    //     // Arrange: Set up MSW handler for this specific test
-    //     server.use(
-    //       rest.get('/api/my-data', (req, res, ctx) => {
-    //         return res(ctx.json({ message: 'Mocked Data' }));
-    //       })
-    //     );
-    //     render(<MyComponent />);
-
-    //     // Act: Rendering triggers the fetch
-
-    //     // Assert: Wait for the data to appear in the DOM
-    //     await waitFor(() => {
-    //        expect(screen.getByText('Mocked Data')).toBeInTheDocument();
-    //     });
-    //   });
-
-    //   it('should handle button click', async () => {
-    //     // Arrange
-    //     // const user = userEvent.setup(); // For user-event
-    //     const handleClickMock = jest.fn();
-    //     render(<MyComponent onButtonClick={handleClickMock} />);
-    //     const button = screen.getByRole('button', { name: /Click Me/i });
-
-    //     // Act
-    //     // await user.click(button); // Using user-event
-    //     fireEvent.click(button); // Using fireEvent
-
-    //     // Assert
-    //     expect(handleClickMock).toHaveBeenCalledTimes(1);
-    //   });
-
-    //   // More tests for different states, interactions, etc.
-    // });
-    ```
-6.  **Querying Elements:**
+    *   For files outside of `src` (like the MSW setup file in `tests/msw`), use relative paths from the test file's location, as path aliases like `~/*` are configured to point only to the `src` directory.
+4.  **MSW Setup:**
+    *   **Initialize Server:** The MSW server for the Node.js test environment is intended to be initialized once in `tests/msw/server.ts` using `setupServer`. This `server` instance is then imported into your test files.
+    *   **Lifecycle Hooks:** Use Jest's lifecycle hooks (`beforeAll`, `afterEach`, `afterAll`) in your test suite (`describe` block) to manage the MSW server:
+        *   `beforeAll(() => server.listen())`: Start the interception before any tests run.
+        *   `afterEach(() => server.resetHandlers())`: Reset request handlers after each test to ensure test isolation (handlers defined in one test don't affect others).
+        *   `afterAll(() => server.close())`: Stop the interception after all tests in the suite are finished.
+    *   **Defining Handlers:** Use `server.use(...handlers)` within individual tests (`it` blocks) or `beforeEach` blocks to define the specific mock API responses needed for that test scenario. Handlers defined with `server.use` in `beforeEach` will apply to all tests in the suite unless overridden in an `it` block.
+    *   **⚠️ Unresolved Issue:** As of recent development, a persistent "Cannot find module 'msw/node'" error (and subsequent errors related to MSW's internal dependencies like `@mswjs/interceptors/ClientRequest`) has been encountered when Jest attempts to load `tests/msw/server.ts`. Standard troubleshooting steps including adjusting `transformIgnorePatterns`, adding `moduleDirectories: ['node_modules']`, re-installing `msw`, and using explicit `moduleNameMapper` entries for `msw/node` did not resolve this. This indicates a potentially deeper environment-specific or configuration conflict affecting Jest's ability to resolve modules from within `node_modules` when initiated from this part of the test directory structure. **Automated frontend tests relying on MSW are currently blocked by this issue.** Manual testing or alternative mocking strategies may be necessary until this is resolved.
+5.  **Mocking Other Dependencies (`jest.mock()`):** For mocking other types of dependencies (e.g., React Context providers, specific hooks, non-network utility functions, third-party modules that don't make network requests like `next/navigation`), continue to use `jest.mock()` at the top level of your test file and manage mock implementations as needed.
+6.  **Test Structure (Conceptual):** When MSW is functional, frontend tests for components fetching data should be structured to:
+    *   Import the `server` instance from `tests/msw/server`.
+    *   Use `beforeAll`, `afterEach`, and `afterAll` hooks to manage the server's lifecycle.
+    *   Use `server.use()` within test cases or `beforeEach` to define specific API handlers that return the desired mock responses for that test scenario (e.g., success data, error response, delayed response).
+    *   Render the component using `@testing-library/react`.
+    *   Use `await waitFor()` or `findBy*` queries to wait for asynchronous operations (like data fetching) to complete and the UI to update based on the mocked response.
+    *   Assert on the rendered UI or interaction side effects.
+7.  **Querying Elements:**
     *   Prioritize accessible queries: `getByRole`, `getByLabelText`, `getByPlaceholderText`, `getByText`, `getByDisplayValue`.
     *   Use `getByTestId` as a last resort if accessible queries are not feasible.
-7.  **Assertions:** Use `expect` with matchers from Jest and `@testing-library/jest-dom`. For asynchronous actions like data fetching, use `waitFor` or `findBy*` queries from React Testing Library to wait for elements to appear after the async operation completes.
+8.  **Assertions:** Use `expect` with matchers from Jest and `@testing-library/jest-dom`. For asynchronous actions like data fetching, use `waitFor` or `findBy*` queries from React Testing Library to wait for elements to appear after the async operation completes.
 
 ---
 
