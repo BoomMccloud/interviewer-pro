@@ -260,51 +260,67 @@ Frontend component tests are run using `npm run test:frontend` which utilizes `j
     *   `@testing-library/react`: For rendering components and querying the DOM.
     *   `@testing-library/jest-dom`: For custom DOM matchers (e.g., `.toBeInTheDocument()`, `.toHaveClass()`). Imported via `jest.setup.ts`.
     *   `@testing-library/user-event`: (Recommended) For simulating user interactions more realistically than `fireEvent`.
+    *   **`msw` (Mock Service Worker):** **Recommended approach for mocking network requests (API calls)**. It intercepts actual HTTP requests made by your code (`fetch`, `axios`, etc.) at the network level, providing a more realistic and less brittle way to simulate API responses compared to mocking the API utility functions directly with `jest.mock()`.
 3.  **Imports:**
     *   Use path aliases like `~/*` for importing components into test files (e.g., `import Button from '~/components/UI/Button';`).
-4.  **Test Structure:**
+4.  **Mocking Dependencies:**
+    *   **Network Requests (`msw`):** For components that fetch data from your backend APIs or external services, set up `msw` request handlers before your tests run. This allows your component code to call your API utility functions normally (e.g., `utils/api.ts`), and `msw` will intercept the underlying `fetch` or HTTP request to return your defined mock data or simulate errors. This approach is generally preferred for APIs over mocking the utility functions directly.
+    *   **Other Dependencies (`jest.mock()`):** For mocking other types of dependencies (e.g., React Context providers, specific hooks, non-network utility functions, third-party modules that don't make network requests), continue to use `jest.mock()` at the top level of your test file and manage mock implementations as needed.
+5.  **Test Structure:**
     ```typescript
     import React from 'react';
-    import { render, screen, fireEvent } from '@testing-library/react';
+    import { render, screen, fireEvent, waitFor } from '@testing-library/react'; // Added waitFor for async
     // import userEvent from '@testing-library/user-event'; // If using user-event
     import '@testing-library/jest-dom'; // Usually not needed here if jest.setup.ts is configured
     import MyComponent from '~/components/MyComponent';
 
-    describe('MyComponent', () => {
-      it('should render correctly with given props', () => {
-        // Arrange
-        const mockProps = { title: 'Test Title' };
-        render(<MyComponent {...mockProps} />);
+    // Example MSW setup (needs to be configured before tests run, e.g., in setupFilesAfterEnv or per describe block)
+    // import { server } from '~/tests/msw/server'; // Assuming you have an MSW setup file
 
-        // Act (often implicit in initial render)
+    // describe('MyComponent', () => {
+    //   beforeAll(() => server.listen());
+    //   afterEach(() => server.resetHandlers());
+    //   afterAll(() => server.close());
 
-        // Assert
-        expect(screen.getByText('Test Title')).toBeInTheDocument();
-        expect(screen.getByRole('heading', { name: /Test Title/i })).toBeInTheDocument();
-      });
+    //   it('should render data fetched from API', async () => {
+    //     // Arrange: Set up MSW handler for this specific test
+    //     server.use(
+    //       rest.get('/api/my-data', (req, res, ctx) => {
+    //         return res(ctx.json({ message: 'Mocked Data' }));
+    //       })
+    //     );
+    //     render(<MyComponent />);
 
-      it('should handle button click', async () => {
-        // Arrange
-        // const user = userEvent.setup(); // For user-event
-        const handleClickMock = jest.fn();
-        render(<MyComponent onButtonClick={handleClickMock} />);
-        const button = screen.getByRole('button', { name: /Click Me/i });
+    //     // Act: Rendering triggers the fetch
 
-        // Act
-        // await user.click(button); // Using user-event
-        fireEvent.click(button); // Using fireEvent
+    //     // Assert: Wait for the data to appear in the DOM
+    //     await waitFor(() => {
+    //        expect(screen.getByText('Mocked Data')).toBeInTheDocument();
+    //     });
+    //   });
 
-        // Assert
-        expect(handleClickMock).toHaveBeenCalledTimes(1);
-      });
-      
-      // More tests for different states, interactions, etc.
-    });
+    //   it('should handle button click', async () => {
+    //     // Arrange
+    //     // const user = userEvent.setup(); // For user-event
+    //     const handleClickMock = jest.fn();
+    //     render(<MyComponent onButtonClick={handleClickMock} />);
+    //     const button = screen.getByRole('button', { name: /Click Me/i });
+
+    //     // Act
+    //     // await user.click(button); // Using user-event
+    //     fireEvent.click(button); // Using fireEvent
+
+    //     // Assert
+    //     expect(handleClickMock).toHaveBeenCalledTimes(1);
+    //   });
+
+    //   // More tests for different states, interactions, etc.
+    // });
     ```
-5.  **Querying Elements:**
+6.  **Querying Elements:**
     *   Prioritize accessible queries: `getByRole`, `getByLabelText`, `getByPlaceholderText`, `getByText`, `getByDisplayValue`.
     *   Use `getByTestId` as a last resort if accessible queries are not feasible.
-6.  **Assertions:** Use `expect` with matchers from Jest and `@testing-library/jest-dom`.
+7.  **Assertions:** Use `expect` with matchers from Jest and `@testing-library/jest-dom`. For asynchronous actions like data fetching, use `waitFor` or `findBy*` queries from React Testing Library to wait for elements to appear after the async operation completes.
 
 ---
 
