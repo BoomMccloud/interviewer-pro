@@ -37,20 +37,20 @@ For each specific implementation task:
 
     2.  **Authentication Setup (`lib/auth.ts`, `app/api/auth/...`, `middleware.ts`, `login/page.tsx`, `app/page.tsx`, `app/(protected)/layout.tsx`):**
         *   **TDD:**
-            *   Write **Integration Tests** for `middleware.ts`. Simulate incoming requests to `/(protected)/dashboard` with and without a mock session token/cookie. Assert that the middleware redirects correctly to `/login` when not authenticated and allows access when authenticated. (RED -> GREEN -> REFACTOR)
-            *   Write **Component Test** for `GoogleSignInButton.tsx`. Assert the button renders and clicking it calls `signIn` from `next-auth/react` (mock `signIn`). (RED -> GREEN -> REFACTOR)
-            *   Write **Integration Test** (or simple function test) for `app/page.tsx`. Mock `useSession` to return authenticated/unauthenticated states. Assert the page redirects correctly (mock `next/navigation.router.push`). (RED -> GREEN -> REFACTOR)
-            *   (Less critical for MVP, but good practice) Write **Unit Tests** for `lib/auth.ts` configuration details if any complex logic exists there (e.g., callbacks).
-        *   *Implementation:* Implement the NextAuth configuration, middleware, login page, and layout files based on the tests.
+            *   [x] Write **Integration Tests** for `middleware.ts`. Simulate incoming requests to `/(protected)/dashboard` with and without a mock session token/cookie. Assert that the middleware redirects correctly to `/login` when not authenticated and allows access when authenticated. (RED -> GREEN -> REFACTOR) (Completed)
+            *   [x] Write **Component Test** for `GoogleSignInButton.tsx`. Assert the button renders and clicking it calls `signIn` from `next-auth/react` (mock `signIn`). (RED -> GREEN -> REFACTOR) (Completed)
+            *   [x] Write **Integration Test** (or simple function test) for `app/page.tsx`. Mock `useSession` to return authenticated/unauthenticated states. Assert the page redirects correctly (mock `next/navigation.router.push`). (RED -> GREEN -> REFACTOR) (Completed)
+            *   [x] (Less critical for MVP, but good practice) Write **Unit Tests** for `lib/auth.ts` configuration details if any complex logic exists there (e.g., callbacks). (Completed)
+        *   *Implementation:* [x] Implement the NextAuth configuration, middleware, login page, and layout files based on the tests. (Completed)
 
     3.  **API Integration Pattern (`src/utils/api.ts`, `src/types/index.ts`):**
         *   **TDD:**
-            *   Define TypeScript types in `src/types/index.ts` for expected API data shapes *before* writing the utility functions or components that use them. (This isn't a runtime test, but is part of the TDD preparation in a typed language).
-            *   Write **Unit Tests** for `utils/api.ts` helper functions (`get...`, `post...`). Use Jest's global `fetch` mock or a library like `jest-fetch-mock`.
-            *   *For `getMvpJdResumeText()`:* Mock `fetch` to return a specific JSON response. Assert the `getMvpJdResumeText` function calls `fetch` with the correct URL and headers, and correctly parses the JSON response and returns the data. Test error cases (non-200 response). (RED -> GREEN -> REFACTOR)
-            *   *For `saveMvpJdResumeText(data)`:* Mock `fetch`. Assert the function calls `fetch` with the correct URL, HTTP method (POST), headers, and sends the `data` in the request body (JSON.stringify). Test error cases. (RED -> GREEN -> REFACTOR)
-            *   Repeat for other necessary API utility functions (`createMvpSession`, `getSessionReport`, `continueSession`, `endSession`, `listMvpSessionsForCurrentText`).
-        *   *Implementation:* Write the `utils/api.ts` functions based on the tests.
+            *   [x] Define TypeScript types in `src/types/index.ts` for expected API data shapes *before* writing the utility functions or components that use them. (This isn't a runtime test, but is part of the TDD preparation in a typed language). (Completed)
+            *   [x] Write **Unit Tests** for `utils/api.ts` helper functions (`get...`, `post...`). Use Jest's global `fetch` mock or a library like `jest-fetch-mock`. (Completed)
+            *   [x] *For `getMvpJdResumeText()`:* Mock `fetch` to return a specific JSON response. Assert the `getMvpJdResumeText` function calls `fetch` with the correct URL and headers, and correctly parses the JSON response and returns the data. Test error cases (non-200 response). (RED -> GREEN -> REFACTOR) (Completed)
+            *   [x] *For `saveMvpJdResumeText(data)`:* Mock `fetch`. Assert the function calls `fetch` with the correct URL, HTTP method (POST), headers, and sends the `data` in the request body (JSON.stringify). Test error cases. (RED -> GREEN -> REFACTOR) (Completed)
+            *   [x] Repeat for other necessary API utility functions (`createMvpSession`, `getSessionReport`, `continueSession`, `endSession`, `listMvpSessionsForCurrentText`). (Completed)
+        *   *Implementation:* [x] Write the `utils/api.ts` functions based on the tests. (Completed)
 
 ---
 

@@ -18,12 +18,12 @@ This plan intertwines the goals of establishing look, consistent CSS, UX flow, a
         *   [x] Create a directory for reusable UI components (`src/components/UI/`). (Completed)
         *   [x] Implement basic, generic components within `components/UI/`: `Button.tsx`, `Input.tsx`, `Spinner.tsx`, `Timer.tsx`. Focus purely on presentation, basic props (e.g., `children`, `onClick`), and styling. (Completed)
     2.  **Authentication Setup:**
-        *   Implement the NextAuth configuration in `src/lib/auth.ts`.
-        *   Set up the NextAuth API route handler: `src/app/api/auth/[...nextauth]/route.ts`.
-        *   Implement the Next.js middleware (`src/middleware.ts`) to protect the `/(protected)` route group, redirecting unauthenticated users to the login page.
-        *   Create the simple login page: `src/app/login/page.tsx`, using a component like `src/components/Auth/GoogleSignInButton.tsx` to initiate login.
-        *   Create the root landing page: `src/app/page.tsx`. Add logic to check authentication status and redirect authenticated users to `/dashboard` (or `/(protected)/dashboard`) and unauthenticated users to `/login`.
-        *   Create the protected layout: `src/app/(protected)/layout.tsx`. Wrap children with `src/components/Auth/SessionProvider.tsx` to provide session context. This layout will be used by all pages requiring authentication.
+        *   [x] Implement the NextAuth configuration in `src/lib/auth.ts`. (Completed)
+        *   [x] Set up the NextAuth API route handler: `src/app/api/auth/[...nextauth]/route.ts`. (Completed)
+        *   [x] Implement the Next.js middleware (`src/middleware.ts`) to protect the `/(protected)` route group, redirecting unauthenticated users to the login page. (Completed)
+        *   [x] Create the simple login page: `src/app/login/page.tsx`, using a component like `src/components/Auth/GoogleSignInButton.tsx` to initiate login. (Completed)
+        *   [x] Create the root landing page: `src/app/page.tsx`. Add logic to check authentication status and redirect authenticated users to `/dashboard` (or `/(protected)/dashboard`) and unauthenticated users to `/login`. (Completed)
+        *   [x] Create the protected layout: `src/app/(protected)/layout.tsx`. Wrap children with `src/components/Auth/SessionProvider.tsx` to provide session context. This layout will be used by all pages requiring authentication. (Completed)
     3.  **API Integration Pattern:**
         *   Create a utility file for backend communication: `src/utils/api.ts`.
         *   Implement helper functions in `utils/api.ts` for making `fetch` requests to your MVP `/api` endpoints (e.g., `getMvpJdResumeText()`, `saveMvpJdResumeText(data)`, `createMvpSession()`, `getSessionReport(sessionId)`). These functions should handle request headers, parsing JSON responses, and basic error propagation.
