@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { api } from '~/trpc/react';
 import Spinner from '~/components/UI/Spinner';
 import SessionOverview from '~/components/Sessions/SessionOverview';
@@ -20,6 +21,8 @@ interface SessionReportContentProps {
 }
 
 export function SessionReportContent({ sessionId }: SessionReportContentProps) {
+  const router = useRouter();
+
   // Fetch session data using our new tRPC procedures
   const { 
     data: sessionReport, 
@@ -38,6 +41,40 @@ export function SessionReportContent({ sessionId }: SessionReportContentProps) {
     isLoading: feedbackLoading, 
     error: feedbackError 
   } = api.session.getSessionFeedback.useQuery({ sessionId });
+
+  // Mutation to create a new session for retake
+  const createSessionMutation = api.session.createSession.useMutation({
+    onSuccess: (newSession) => {
+      // Navigate to the new session
+      router.push(`/sessions/${newSession.sessionId}`);
+    },
+    onError: (error) => {
+      console.error('Failed to create retake session:', error);
+      alert('Failed to create new session. Please try again.');
+    }
+  });
+
+  const handleRetakeInterview = async () => {
+    if (!sessionReport) {
+      alert('Session data not available for retake.');
+      return;
+    }
+
+    try {
+      // Create a new session using the same persona and duration
+      await createSessionMutation.mutateAsync({
+        personaId: sessionReport.personaId,
+        durationInSeconds: sessionReport.durationInSeconds || 1800, // Default to 30 minutes
+      });
+    } catch (error) {
+      console.error('Error creating retake session:', error);
+    }
+  };
+
+  const handleExportReport = () => {
+    // TODO: Implement export functionality
+    alert('Export functionality will be implemented in a future update.');
+  };
 
   // Show loading state
   if (reportLoading || analyticsLoading || feedbackLoading) {
@@ -138,11 +175,18 @@ export function SessionReportContent({ sessionId }: SessionReportContentProps) {
         </button>
         
         <div className="space-x-2">
-          <button className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+          <button 
+            onClick={handleExportReport}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+          >
             Export Report
           </button>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-            Retake Interview
+          <button 
+            onClick={handleRetakeInterview}
+            disabled={createSessionMutation.isPending}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {createSessionMutation.isPending ? 'Creating...' : 'Retake Interview'}
           </button>
         </div>
       </div>
