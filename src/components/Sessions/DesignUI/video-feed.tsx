@@ -25,12 +25,13 @@ export function VideoFeed() {
       }
     }
 
-    setupCamera()
+    void setupCamera()
 
     return () => {
       // Clean up video stream when component unmounts
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream
+      const currentVideo = videoRef.current
+      if (currentVideo?.srcObject) {
+        const stream = currentVideo.srcObject as MediaStream
         const tracks = stream.getTracks()
         tracks.forEach((track) => track.stop())
       }

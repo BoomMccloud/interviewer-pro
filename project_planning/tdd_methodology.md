@@ -8,10 +8,11 @@ This document was originally written assuming REST API patterns with MSW for moc
 ## Table of Contents
 1. [TDD Philosophy & Methodology](#1-tdd-philosophy--methodology)
 2. [Jest Setup & Configuration](#2-jest-setup--configuration)
-3. [Backend Testing (tRPC Routers)](#3-backend-testing-trpc-routers)
-4. [Frontend Testing (React Components)](#4-frontend-testing-react-components)
-5. [TDD Implementation by Development Phase](#5-tdd-implementation-by-development-phase)
-6. [Troubleshooting & Best Practices](#6-troubleshooting--best-practices)
+3. [Frontend Styling Architecture & Testing](#3-frontend-styling-architecture--testing)
+4. [Backend Testing (tRPC Routers)](#4-backend-testing-trpc-routers)
+5. [Frontend Testing (React Components)](#5-frontend-testing-react-components)
+6. [TDD Implementation by Development Phase](#6-tdd-implementation-by-development-phase)
+7. [Troubleshooting & Best Practices](#7-troubleshooting--best-practices)
 
 ---
 
@@ -183,7 +184,323 @@ export default {
 
 ---
 
-## 3. Backend Testing (tRPC Routers)
+## 3. Frontend Styling Architecture & Testing
+
+### Standardized Styling System: Tailwind CSS + CVA
+
+**Architecture Decision:** Interviewer-Pro uses **Tailwind CSS + Class Variance Authority (CVA)** as the primary styling system to ensure consistency, maintainability, and type safety.
+
+#### Why This Combination
+
+1. **Already Established** - Button component and existing patterns use this successfully
+2. **Industry Standard** - Used by major UI libraries (Radix, Shadcn/ui, etc.)
+3. **Type Safety** - CVA provides excellent TypeScript support for variants
+4. **Performance** - Tailwind's purging removes unused styles automatically
+5. **Developer Experience** - Great VS Code extensions and IntelliSense
+6. **Component-First** - Perfect for building reusable, testable UI components
+
+#### Architecture Pattern
+
+```
+Tailwind (utilities) + CVA (component variants) + Tailwind Theme (design tokens)
+```
+
+### Styling System Hierarchy
+
+#### ✅ Primary (Use These):
+- **Tailwind utility classes** for spacing, layout, basic styling
+- **CVA variants** for component states and variations  
+- **Tailwind theme config** for colors/design tokens
+
+#### 🔄 Migrate/Consolidate:
+- **HSL color variables** → Move to `tailwind.config.ts` theme
+- **Direct className overrides** → Create proper CVA variants
+- **Inline styles** → Convert to Tailwind utilities or CVA variants
+
+#### ❌ Avoid Going Forward:
+- Adding new CSS files with custom classes
+- Inline styles (except for dynamic values)
+- CSS-in-JS libraries
+- Multiple competing color systems
+
+### CVA Component Pattern
+
+#### Standard Button Component Structure
+
+```typescript
+// src/components/UI/Button.tsx
+import { cva, type VariantProps } from "class-variance-authority"
+import { cn } from "~/lib/utils"
+
+const buttonVariants = cva(
+  // Base styles applied to all variants
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive: "bg-red-500 hover:bg-red-600 text-white",
+        outline: "border bg-background hover:bg-accent hover:text-accent-foreground",
+        // Custom variants for specific use cases
+        "mic-active": "bg-blue-600 hover:bg-blue-700 border-blue-600 text-white",
+        "mic-muted": "bg-red-500 hover:bg-red-600 border-red-500 text-white",
+        "control-nav": "bg-slate-700 hover:bg-slate-600 border-slate-600 text-white",
+      },
+      size: {
+        default: "h-9 px-4 py-2",
+        sm: "h-8 px-3",
+        lg: "h-10 px-6",
+        icon: "size-9",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
+
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean
+}
+
+export function Button({
+  className,
+  variant,
+  size,
+  asChild = false,
+  ...props
+}: ButtonProps) {
+  const Comp = asChild ? Slot : "button"
+  return (
+    <Comp
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  )
+}
+```
+
+### TDD for Styled Components
+
+#### 🔴 RED Phase - Test Variant Behavior
+
+```typescript
+// tests/frontend/components/UI/Button.test.tsx
+describe('Button Component Variants', () => {
+  it('should apply correct variant classes', () => {
+    render(<Button variant="destructive">Delete</Button>);
+    
+    const button = screen.getByRole('button');
+    expect(button).toHaveClass('bg-red-500', 'hover:bg-red-600', 'text-white');
+  });
+
+  it('should handle dynamic variant switching', () => {
+    const { rerender } = render(<Button variant="mic-active">Mic</Button>);
+    
+    expect(screen.getByRole('button')).toHaveClass('bg-blue-600');
+    
+    rerender(<Button variant="mic-muted">Mic</Button>);
+    expect(screen.getByRole('button')).toHaveClass('bg-red-500');
+  });
+});
+```
+
+#### 🟢 GREEN Phase - Implement Variants
+
+```typescript
+// Add the variant to buttonVariants cva configuration
+variant: {
+  // ... existing variants
+  "mic-active": "bg-blue-600 hover:bg-blue-700 border-blue-600 text-white",
+  "mic-muted": "bg-red-500 hover:bg-red-600 border-red-500 text-white",
+}
+```
+
+#### 🔵 REFACTOR Phase - Extract Reusable Patterns
+
+```typescript
+// Create compound component for control bars
+export function ControlBar({ onPrevious, onNext, onEnd, isFirstQuestion, isLastQuestion }: ControlBarProps) {
+  const [isMicOn, setIsMicOn] = useState(true)
+
+  return (
+    <div className="bg-slate-900 border-t border-slate-800 p-4">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="flex items-center gap-2 w-1/3">
+          <Button
+            variant={isMicOn ? "mic-active" : "mic-muted"}
+            size="icon"
+            onClick={() => setIsMicOn(!isMicOn)}
+          >
+            {isMicOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+          </Button>
+        </div>
+        
+        <div className="flex items-center gap-2 justify-center w-1/3">
+          <Button variant="control-nav" onClick={onPrevious} disabled={isFirstQuestion}>
+            <ChevronLeft className="h-5 w-5 mr-1" />
+            Previous
+          </Button>
+          <Button variant="control-nav" onClick={onNext} disabled={isLastQuestion}>
+            Next
+            <ChevronRight className="h-5 w-5 ml-1" />
+          </Button>
+        </div>
+        
+        <div className="flex items-center gap-2 justify-end w-1/3">
+          <Button variant="destructive" onClick={onEnd}>
+            <PhoneOff className="h-5 w-5 mr-2" />
+            End Interview
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+### Testing Styled Components
+
+#### Focus on Behavior, Not Implementation
+
+```typescript
+describe('ControlBar', () => {
+  it('should toggle microphone state on click', async () => {
+    const user = userEvent.setup();
+    render(<ControlBar onPrevious={jest.fn()} onNext={jest.fn()} onEnd={jest.fn()} />);
+    
+    const micButton = screen.getByRole('button', { name: /mic/i });
+    
+    // Test initial state (active)
+    expect(micButton).toHaveClass('bg-blue-600');
+    
+    // Test toggle behavior
+    await user.click(micButton);
+    expect(micButton).toHaveClass('bg-red-500');
+    
+    await user.click(micButton);
+    expect(micButton).toHaveClass('bg-blue-600');
+  });
+
+  it('should disable navigation buttons appropriately', () => {
+    render(
+      <ControlBar 
+        onPrevious={jest.fn()} 
+        onNext={jest.fn()} 
+        onEnd={jest.fn()}
+        isFirstQuestion={true}
+        isLastQuestion={false}
+      />
+    );
+    
+    expect(screen.getByRole('button', { name: /previous/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /next/i })).not.toBeDisabled();
+  });
+});
+```
+
+### Styling Architecture Benefits for TDD
+
+1. **Predictable Classes:** CVA variants generate consistent class combinations
+2. **Type Safety:** TypeScript ensures only valid variants are used
+3. **Testable Behavior:** Variants map directly to visual and functional states
+4. **Maintainable:** Changes to variants automatically update everywhere they're used
+5. **Documentation:** Variants serve as living documentation of component states
+
+### Integration with Design System
+
+#### Tailwind Configuration
+
+```typescript
+// tailwind.config.ts
+export default {
+  content: [
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        // Primary color system
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        // Interview-specific colors
+        "mic-active": "#2563eb",  // blue-600
+        "mic-muted": "#ef4444",   // red-500
+        "control-nav": "#374151", // slate-700
+      },
+    },
+  },
+  plugins: [],
+} satisfies Config
+```
+
+#### CSS Variables (globals.css)
+
+```css
+/* globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --primary: 220 13% 18%;
+    --primary-foreground: 220 11% 91%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+  }
+  
+  .dark {
+    --primary: 220 11% 91%;
+    --primary-foreground: 220 13% 18%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 98%;
+  }
+}
+```
+
+### Common Styling Pitfalls & Solutions
+
+#### Problem: CVA Variants Not Working
+
+**Symptom:** Custom variants don't apply styles
+**Cause:** CSS specificity conflicts or build issues
+**Solution:** 
+1. Use existing variants when possible
+2. Check TypeScript compilation
+3. Verify Tailwind is purging correctly
+4. Test with inline styles first to isolate the issue
+
+#### Problem: Inconsistent Component Styling
+
+**Symptom:** Same component looks different in different places
+**Cause:** Direct className overrides fighting with CVA
+**Solution:**
+1. Create new CVA variants instead of overriding
+2. Use compound variants for complex state combinations
+3. Extract common patterns into reusable components
+
+#### Problem: Theme Not Applied Consistently
+
+**Symptom:** Some components don't follow theme colors
+**Cause:** Hardcoded colors instead of CSS variables
+**Solution:**
+1. Use Tailwind theme colors consistently
+2. Define custom colors in tailwind.config.ts
+3. Use CSS variables for dynamic theming
+
+---
+
+## 4. Backend Testing (tRPC Routers)
 
 This is the current standard for testing core business logic. Backend tests are run using `npm run test:backend`.
 
@@ -298,7 +615,7 @@ describe('Session tRPC Router', () => {
 
 ---
 
-## 4. Frontend Testing (React Components)
+## 5. Frontend Testing (React Components)
 
 Frontend component tests are run using `npm run test:frontend`. Our successful approach uses direct API/component mocking rather than network-level mocking.
 
@@ -477,7 +794,7 @@ export default function MvpJdResumeInputForm() {
 
 ---
 
-## 5. TDD Implementation by Development Phase
+## 6. TDD Implementation by Development Phase
 
 ### Phase 0: Foundation - Styling, Authentication Infrastructure, tRPC Pattern
 
@@ -759,7 +1076,7 @@ describe('TextInterviewUI', () => {
 
 ---
 
-## 6. Troubleshooting & Best Practices
+## 7. Troubleshooting & Best Practices
 
 ### Common Issues and Solutions
 
