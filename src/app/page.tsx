@@ -1,7 +1,7 @@
 import Link from "next/link";
 // import { auth } from "~/lib/auth"; // Replaced by getSessionForTest
 import { getSessionForTest } from "~/lib/test-auth-utils";
-import { api, HydrateClient } from "~/trpc/server";
+import { HydrateClient } from "~/trpc/server";
 import { redirect } from 'next/navigation';
 
 export default async function Home() {

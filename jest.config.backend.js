@@ -17,7 +17,7 @@ export default {
   },
   transformIgnorePatterns: [
     // This pattern needs to be carefully managed for backend ESM dependencies
-    '/node_modules/(?!(@t3-oss/env-nextjs|superjson)/).+\\.(m?js|ts)$' // From your testing_strategies.md
+    '/node_modules/(?!(@t3-oss/env-nextjs|@t3-oss/env-core|superjson|next-auth|@auth/core|@auth/prisma-adapter|oauth4webapi|jose|preact|openid-client)/).+\\.(m?js|ts)$'
   ],
   // Ensure this targets only your backend tests
   testMatch: [

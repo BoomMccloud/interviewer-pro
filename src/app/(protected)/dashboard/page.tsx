@@ -74,7 +74,7 @@ export default function DashboardPage() {
   };
 
   const handleSessionClick = (sessionId: string) => {
-    router.push(`/sessions/${sessionId}`);
+    router.push(`/sessions/${sessionId}/report`);
   };
 
   const handleRetry = async () => {

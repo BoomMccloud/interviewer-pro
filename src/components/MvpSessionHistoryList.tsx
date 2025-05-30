@@ -119,9 +119,19 @@ export default function MvpSessionHistoryList({
                 </span>
               )}
             </div>
-            <span className="text-blue-600 hover:text-blue-800">
-              View Report →
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-blue-600 hover:text-blue-800">
+                View Report
+              </span>
+              <svg 
+                className="w-4 h-4 text-blue-600" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
           </div>
 
           {session.overallSummary && (

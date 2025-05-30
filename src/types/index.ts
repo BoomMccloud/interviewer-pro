@@ -50,6 +50,9 @@ export interface MvpSessionTurn {
   // This is needed to pass the full context back to the AI in subsequent turns.
   rawAiResponseText?: string; // Only present for 'model' roles
   timestamp: Date; // When this turn occurred
+  
+  // Optional type field for special entries like pause, resume, etc.
+  type?: 'pause' | 'resume' | 'end'; // Special turn types for session state management
 
   // Store the parsed feedback/analysis/alternative directly in the turn data.
   // This simplifies fetching data for the report. Only present for 'model' roles.
@@ -64,12 +67,23 @@ export const zodMvpSessionTurn = z.object({
   text: z.string(),
   rawAiResponseText: z.string().optional(),
   timestamp: z.coerce.date(), // Coerce to Date object from string/number
+  type: z.enum(['pause', 'resume', 'end']).optional(), // Optional type for special turn types
   analysis: z.string().optional(),
   feedbackPoints: z.array(z.string()).optional(),
   suggestedAlternative: z.string().optional(),
 });
 
 export const zodMvpSessionTurnArray = z.array(zodMvpSessionTurn);
+
+// AI Response structure for gemini service
+export interface MvpAiResponse {
+  questionText?: string; // For getFirstQuestion
+  nextQuestion?: string; // For continueInterview
+  analysis?: string;
+  feedbackPoints?: string[];
+  suggestedAlternative?: string;
+  rawAiResponseText?: string;
+}
 
 // Define Zod schema for SessionData
 export const zodSessionData = z.object({
@@ -200,4 +214,153 @@ export const zodSessionFeedbackData = z.object({
   recommendations: z.array(z.string()),
   detailedAnalysis: z.string(),
   skillAssessment: z.record(z.string(), z.number()),
+});
+
+// ==============================================
+// Phase 3A: Live Interview Session Types (TDD)
+// ==============================================
+
+/**
+ * Active session state for live interviews
+ * Used to track real-time interview progress and state
+ */
+export interface ActiveSessionData {
+  sessionId: string;
+  status: 'created' | 'active' | 'paused' | 'completed' | 'abandoned';
+  personaId: string;
+  currentQuestion: string;
+  questionNumber: number;
+  totalQuestions: number;
+  timeRemaining: number; // in seconds
+  conversationHistory: MvpSessionTurn[];
+  startTime: Date;
+  lastActivityTime: Date;
+  endTime?: Date;
+}
+
+/**
+ * Interview persona configuration
+ * Defines different interviewer personalities and styles
+ */
+export interface InterviewPersona {
+  id: string;
+  name: string;
+  description: string;
+  style: 'technical' | 'behavioral' | 'case-study' | 'general';
+  personality: string;
+  questionStyle: string;
+  difficulty: 'beginner' | 'intermediate' | 'advanced';
+}
+
+/**
+ * Request format for starting an interview session
+ */
+export interface StartInterviewSessionRequest {
+  sessionId: string;
+  personaId: string;
+}
+
+/**
+ * Response format for starting an interview session
+ */
+export interface StartInterviewSessionResponse {
+  sessionId: string;
+  status: 'active';
+  personaId: string;
+  currentQuestion: string;
+  questionNumber: number;
+  totalQuestions: number;
+  timeRemaining: number;
+  conversationHistory: MvpSessionTurn[];
+}
+
+/**
+ * Request format for getting next question
+ */
+export interface GetNextQuestionRequest {
+  sessionId: string;
+  userResponse: string;
+}
+
+/**
+ * Response format for getting next question
+ */
+export interface GetNextQuestionResponse {
+  nextQuestion: string | null; // null indicates interview completion
+  questionNumber: number;
+  isComplete: boolean;
+  conversationHistory: MvpSessionTurn[];
+}
+
+/**
+ * Request format for updating session state
+ */
+export interface UpdateSessionStateRequest {
+  sessionId: string;
+  action: 'pause' | 'resume' | 'end';
+  currentResponse?: string;
+}
+
+/**
+ * Response format for updating session state
+ */
+export interface UpdateSessionStateResponse {
+  status: 'active' | 'paused' | 'completed';
+  lastActivityTime: string;
+  endTime?: string;
+}
+
+/**
+ * Request format for getting active session
+ */
+export interface GetActiveSessionRequest {
+  sessionId: string;
+}
+
+// ==============================================
+// Zod Schemas for Phase 3A Types
+// ==============================================
+
+export const zodActiveSessionData = z.object({
+  sessionId: z.string(),
+  status: z.enum(['created', 'active', 'paused', 'completed', 'abandoned']),
+  personaId: z.string(),
+  currentQuestion: z.string(),
+  questionNumber: z.number().int().positive(),
+  totalQuestions: z.number().int().positive(),
+  timeRemaining: z.number().int().min(0),
+  conversationHistory: z.array(zodMvpSessionTurn),
+  startTime: z.date(),
+  lastActivityTime: z.date(),
+  endTime: z.date().optional(),
+});
+
+export const zodInterviewPersona = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  style: z.enum(['technical', 'behavioral', 'case-study', 'general']),
+  personality: z.string(),
+  questionStyle: z.string(),
+  difficulty: z.enum(['beginner', 'intermediate', 'advanced']),
+});
+
+export const zodStartInterviewSessionRequest = z.object({
+  sessionId: z.string(),
+  personaId: z.string(),
+});
+
+export const zodGetNextQuestionRequest = z.object({
+  sessionId: z.string(),
+  userResponse: z.string(),
+});
+
+export const zodUpdateSessionStateRequest = z.object({
+  sessionId: z.string(),
+  action: z.enum(['pause', 'resume', 'end']),
+  currentResponse: z.string().optional(),
+});
+
+export const zodGetActiveSessionRequest = z.object({
+  sessionId: z.string(),
 });

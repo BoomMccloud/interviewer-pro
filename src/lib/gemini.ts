@@ -227,7 +227,7 @@ export async function getFirstQuestion(
     // For the first question, we only need the question text for the frontend,
     // but we save the raw response text to the DB for history context in future turns.
     return {
-        questionText: parsed.nextQuestion,
+        questionText: parsed.nextQuestion ?? "Error: Could not extract question from AI response.",
         rawAiResponseText: rawAiResponseText // Save the full structured response text
     };
 
@@ -287,6 +287,81 @@ export async function continueInterview(
     console.error('Error continuing interview with Gemini:', error);
      // Re-throw a more user-friendly error or handle appropriately
     throw new Error('Failed to get next question and feedback from AI.');
+  }
+}
+
+// ==============================================
+// Phase 3A: Live Interview Functions (TDD)
+// ==============================================
+
+/**
+ * Generate the next question in a live interview based on conversation history
+ * Used for dynamic interview progression in Phase 3A
+ */
+export async function getNextQuestion(
+  conversationHistory: MvpSessionTurn[],
+  persona: Persona
+): Promise<string | null> {
+  try {
+    // Build conversation context from history
+    const conversationContext = conversationHistory
+      .map(turn => `${turn.role === 'model' ? 'Interviewer' : 'Candidate'}: ${turn.text}`)
+      .join('\n');
+
+    // Create system prompt for generating next question
+    const systemPrompt = `${persona.systemPrompt}
+
+INTERVIEW CONTEXT:
+Previous conversation:
+${conversationContext}
+
+INSTRUCTIONS:
+- Generate the next logical interview question based on the conversation so far
+- Build on the candidate's previous responses
+- Keep questions relevant to the job requirements
+- If the interview should end (after sufficient questions), respond with "END_INTERVIEW"
+- Make questions progressively more specific and challenging
+- Ensure smooth conversation flow
+
+Generate only the next question, nothing else.`;
+
+    const contents: Content[] = [
+      {
+        role: 'user',
+        parts: [{ text: systemPrompt }],
+      },
+    ];
+
+    const request = {
+      model: MODEL_NAME_TEXT,
+      contents,
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 200,
+      },
+    };
+
+    const streamingResult = await genAI.models.generateContentStream(request);
+    let fullResponse = '';
+
+    for await (const chunk of streamingResult) {
+      if (chunk.text) {
+        fullResponse += chunk.text;
+      }
+    }
+
+    const nextQuestion = fullResponse.trim();
+    
+    // Check if interview should end
+    if (nextQuestion.includes('END_INTERVIEW') || conversationHistory.length >= 10) {
+      return null; // Indicates interview completion
+    }
+
+    return nextQuestion;
+
+  } catch (error) {
+    console.error('Error generating next question:', error);
+    throw new Error('Failed to generate next interview question');
   }
 }
 
