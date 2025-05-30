@@ -442,4 +442,345 @@ describe('Session tRPC Router', () => {
     it.todo('should handle errors if session not found or not completed');
   });
 
+  // ==========================================
+  // Phase 2A: Session Reports & Analytics Tests
+  // ==========================================
+
+  describe('getSessionReport procedure', () => {
+    it('should return comprehensive session data with full history for authorized user', async () => {
+      // Arrange: Create a completed session with multiple turns
+      const completedSession = await db.sessionData.create({
+        data: {
+          userId: user.id,
+          jdResumeTextId: jdResume.id,
+          personaId: MOCK_PERSONA_ID,
+          durationInSeconds: 2700, // 45 minutes
+          history: [
+            {
+              id: 'turn-1-model',
+              role: 'model',
+              text: 'Tell me about yourself',
+              timestamp: new Date('2024-01-01T10:00:00Z'),
+            },
+            {
+              id: 'turn-1-user',
+              role: 'user', 
+              text: 'I am a software engineer with 5 years experience',
+              timestamp: new Date('2024-01-01T10:01:00Z'),
+            },
+            {
+              id: 'turn-2-model',
+              role: 'model',
+              text: 'What are your technical strengths?',
+              analysis: 'Good response showing experience',
+              feedbackPoints: ['Clear communication'],
+              timestamp: new Date('2024-01-01T10:02:00Z'),
+            },
+          ] satisfies MvpSessionTurn[],
+          createdAt: new Date('2024-01-01T10:00:00Z'),
+          updatedAt: new Date('2024-01-01T10:15:00Z'),
+        },
+      });
+
+      const caller = await getTestCaller(user);
+
+      // Act
+      const result = await caller.session.getSessionReport({ 
+        sessionId: completedSession.id 
+      });
+
+      // Assert
+      expect(result).toBeDefined();
+      expect(result.sessionId).toBe(completedSession.id);
+      expect(result.durationInSeconds).toBe(2700);
+      expect(result.history).toHaveLength(3);
+      expect(result.questionCount).toBe(2); // Number of model questions
+      expect(result.completionPercentage).toBeGreaterThan(0);
+      expect(result.createdAt).toEqual(new Date('2024-01-01T10:00:00Z'));
+      expect(result.averageResponseTime).toBeGreaterThan(0);
+    });
+
+    it('should throw error for session not owned by user', async () => {
+      // Arrange: Create session for different user
+      const otherUser = await db.user.create({
+        data: {
+          id: 'other-user-id',
+          email: 'other@example.com',
+          name: 'Other User',
+        },
+      });
+
+      const otherSession = await db.sessionData.create({
+        data: {
+          userId: otherUser.id,
+          jdResumeTextId: jdResume.id,
+          personaId: MOCK_PERSONA_ID,
+          durationInSeconds: 1800,
+          history: [],
+        },
+      });
+
+      const caller = await getTestCaller(user);
+
+      // Act & Assert
+      await expect(
+        caller.session.getSessionReport({ sessionId: otherSession.id })
+      ).rejects.toThrow('Session not found or not authorized');
+
+      // Cleanup
+      await db.sessionData.delete({ where: { id: otherSession.id } });
+      await db.user.delete({ where: { id: otherUser.id } });
+    });
+
+    it('should throw error for non-existent session', async () => {
+      const caller = await getTestCaller(user);
+
+      // Act & Assert
+      await expect(
+        caller.session.getSessionReport({ sessionId: 'non-existent-id' })
+      ).rejects.toThrow('Session not found or not authorized');
+    });
+  });
+
+  describe('getSessionAnalytics procedure', () => {
+    it('should calculate performance metrics from session history', async () => {
+      // Arrange: Create session with timed interactions
+      const sessionWithMetrics = await db.sessionData.create({
+        data: {
+          userId: user.id,
+          jdResumeTextId: jdResume.id,
+          personaId: MOCK_PERSONA_ID,
+          durationInSeconds: 1800, // 30 minutes
+          history: [
+            {
+              id: 'turn-1-model',
+              role: 'model',
+              text: 'Question 1',
+              timestamp: new Date('2024-01-01T10:00:00Z'),
+            },
+            {
+              id: 'turn-1-user',
+              role: 'user',
+              text: 'Answer 1',
+              timestamp: new Date('2024-01-01T10:01:30Z'), // 90 seconds response
+            },
+            {
+              id: 'turn-2-model',
+              role: 'model',
+              text: 'Question 2',
+              timestamp: new Date('2024-01-01T10:02:00Z'),
+            },
+            {
+              id: 'turn-2-user',
+              role: 'user',
+              text: 'Answer 2',
+              timestamp: new Date('2024-01-01T10:03:00Z'), // 60 seconds response
+            },
+          ] satisfies MvpSessionTurn[],
+        },
+      });
+
+      const caller = await getTestCaller(user);
+
+      // Act
+      const analytics = await caller.session.getSessionAnalytics({ 
+        sessionId: sessionWithMetrics.id 
+      });
+
+      // Assert
+      expect(analytics).toBeDefined();
+      expect(analytics.sessionId).toBe(sessionWithMetrics.id);
+      expect(analytics.totalQuestions).toBe(2);
+      expect(analytics.totalAnswers).toBe(2);
+      expect(analytics.averageResponseTime).toBe(75); // (90 + 60) / 2
+      expect(analytics.responseTimeMetrics).toEqual([90, 60]);
+      expect(analytics.completionPercentage).toBe(100);
+      expect(analytics.sessionDurationMinutes).toBe(30);
+      expect(analytics.performanceScore).toBeGreaterThanOrEqual(0);
+      expect(analytics.performanceScore).toBeLessThanOrEqual(100);
+    });
+
+    it('should handle sessions with no responses gracefully', async () => {
+      // Arrange: Create session with only AI questions
+      const incompleteSession = await db.sessionData.create({
+        data: {
+          userId: user.id,
+          jdResumeTextId: jdResume.id,
+          personaId: MOCK_PERSONA_ID,
+          durationInSeconds: 300,
+          history: [
+            {
+              id: 'turn-1-model',
+              role: 'model',
+              text: 'First question',
+              timestamp: new Date('2024-01-01T10:00:00Z'),
+            },
+          ] satisfies MvpSessionTurn[],
+        },
+      });
+
+      const caller = await getTestCaller(user);
+
+      // Act
+      const analytics = await caller.session.getSessionAnalytics({ 
+        sessionId: incompleteSession.id 
+      });
+
+      // Assert
+      expect(analytics.totalQuestions).toBe(1);
+      expect(analytics.totalAnswers).toBe(0);
+      expect(analytics.averageResponseTime).toBe(0);
+      expect(analytics.responseTimeMetrics).toEqual([]);
+      expect(analytics.completionPercentage).toBe(0);
+      expect(analytics.performanceScore).toBe(0);
+    });
+
+    it('should throw error for unauthorized session access', async () => {
+      const caller = await getTestCaller(user);
+
+      // Act & Assert
+      await expect(
+        caller.session.getSessionAnalytics({ sessionId: 'unauthorized-session' })
+      ).rejects.toThrow('Session not found or not authorized');
+    });
+  });
+
+  describe('getSessionFeedback procedure', () => {
+    it('should return AI-generated feedback for completed session', async () => {
+      // Arrange: Create session with feedback-ready history
+      const feedbackSession = await db.sessionData.create({
+        data: {
+          userId: user.id,
+          jdResumeTextId: jdResume.id,
+          personaId: MOCK_PERSONA_ID,
+          durationInSeconds: 2400,
+          history: [
+            {
+              id: 'turn-1-model',
+              role: 'model',
+              text: 'Describe your experience with React',
+              timestamp: new Date('2024-01-01T10:00:00Z'),
+            },
+            {
+              id: 'turn-1-user',
+              role: 'user',
+              text: 'I have 3 years of React experience building scalable web applications',
+              timestamp: new Date('2024-01-01T10:01:00Z'),
+            },
+            {
+              id: 'turn-1-model-feedback',
+              role: 'model',
+              text: 'Great! Tell me about a challenging project',
+              analysis: 'Strong technical background demonstrated',
+              feedbackPoints: ['Clear communication', 'Relevant experience'],
+              suggestedAlternative: 'Could provide more specific examples',
+              timestamp: new Date('2024-01-01T10:02:00Z'),
+            },
+          ] satisfies MvpSessionTurn[],
+        },
+      });
+
+      const caller = await getTestCaller(user);
+
+      // Act
+      const feedback = await caller.session.getSessionFeedback({ 
+        sessionId: feedbackSession.id 
+      });
+
+      // Assert
+      expect(feedback).toBeDefined();
+      expect(feedback.sessionId).toBe(feedbackSession.id);
+      expect(feedback.overallScore).toBeGreaterThanOrEqual(0);
+      expect(feedback.overallScore).toBeLessThanOrEqual(100);
+      
+      expect(feedback.strengths).toBeDefined();
+      expect(Array.isArray(feedback.strengths)).toBe(true);
+      expect(feedback.strengths.length).toBeGreaterThan(0);
+      
+      expect(feedback.areasForImprovement).toBeDefined();
+      expect(Array.isArray(feedback.areasForImprovement)).toBe(true);
+      
+      expect(feedback.recommendations).toBeDefined();
+      expect(Array.isArray(feedback.recommendations)).toBe(true);
+      
+      expect(feedback.detailedAnalysis).toBeDefined();
+      expect(typeof feedback.detailedAnalysis).toBe('string');
+      expect(feedback.detailedAnalysis.length).toBeGreaterThan(0);
+      
+      expect(feedback.skillAssessment).toBeDefined();
+      expect(typeof feedback.skillAssessment).toBe('object');
+    });
+
+    it('should generate feedback even for incomplete sessions', async () => {
+      // Arrange: Create session with minimal interaction
+      const minimalSession = await db.sessionData.create({
+        data: {
+          userId: user.id,
+          jdResumeTextId: jdResume.id,
+          personaId: MOCK_PERSONA_ID,
+          durationInSeconds: 600,
+          history: [
+            {
+              id: 'turn-1-model',
+              role: 'model',
+              text: 'Tell me about yourself',
+              timestamp: new Date('2024-01-01T10:00:00Z'),
+            },
+            {
+              id: 'turn-1-user',
+              role: 'user',
+              text: 'I am a developer',
+              timestamp: new Date('2024-01-01T10:01:00Z'),
+            },
+          ] satisfies MvpSessionTurn[],
+        },
+      });
+
+      const caller = await getTestCaller(user);
+
+      // Act
+      const feedback = await caller.session.getSessionFeedback({ 
+        sessionId: minimalSession.id 
+      });
+
+      // Assert
+      expect(feedback.sessionId).toBe(minimalSession.id);
+      expect(feedback.overallScore).toBeGreaterThanOrEqual(0);
+      expect(feedback.recommendations).toContain('Complete more questions for better assessment');
+      expect(feedback.detailedAnalysis).toContain('limited interaction');
+    });
+
+    it('should throw error for non-existent session', async () => {
+      const caller = await getTestCaller(user);
+
+      // Act & Assert
+      await expect(
+        caller.session.getSessionFeedback({ sessionId: 'invalid-session-id' })
+      ).rejects.toThrow('Session not found or not authorized');
+    });
+
+    it('should handle sessions with parsing errors gracefully', async () => {
+      // Arrange: Create session with malformed history
+      const malformedSession = await db.sessionData.create({
+        data: {
+          userId: user.id,
+          jdResumeTextId: jdResume.id,
+          personaId: MOCK_PERSONA_ID,
+          durationInSeconds: 300,
+          history: [
+            // Intentionally missing required fields to test error handling
+            { id: 'broken', role: 'invalid' } as any,
+          ],
+        },
+      });
+
+      const caller = await getTestCaller(user);
+
+      // Act & Assert
+      await expect(
+        caller.session.getSessionFeedback({ sessionId: malformedSession.id })
+      ).rejects.toThrow('Invalid session history format');
+    });
+  });
+
 }); 

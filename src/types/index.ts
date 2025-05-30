@@ -125,3 +125,79 @@ export const zodMvpReportData = z.object({
 // This makes it easy to import User, JdResumeText, SessionData from 'src/types'
 // instead of '@prisma/client' everywhere, centralizing the source.
 export type { User, JdResumeText, SessionData };
+
+// ===================================================================
+// Phase 2A: Session Reports & Analytics Types
+// ===================================================================
+
+// Return type for getSessionReport procedure
+export interface SessionReportData {
+  sessionId: string;
+  durationInSeconds: number;
+  history: MvpSessionTurn[];
+  questionCount: number; // Number of AI questions asked
+  completionPercentage: number; // Percentage of session completed
+  createdAt: Date;
+  updatedAt: Date;
+  averageResponseTime: number; // Average time to respond to questions in seconds
+  personaId: string;
+  jdResumeTextId: string;
+}
+
+// Return type for getSessionAnalytics procedure
+export interface SessionAnalyticsData {
+  sessionId: string;
+  totalQuestions: number; // Total number of AI questions
+  totalAnswers: number; // Total number of user responses
+  averageResponseTime: number; // Average response time in seconds
+  responseTimeMetrics: number[]; // Array of individual response times
+  completionPercentage: number; // Percentage of questions answered
+  sessionDurationMinutes: number; // Total session duration in minutes
+  performanceScore: number; // Overall performance score (0-100)
+}
+
+// Return type for getSessionFeedback procedure
+export interface SessionFeedbackData {
+  sessionId: string;
+  overallScore: number; // Overall interview performance score (0-100)
+  strengths: string[]; // Array of identified strengths
+  areasForImprovement: string[]; // Array of areas needing improvement
+  recommendations: string[]; // Array of actionable recommendations
+  detailedAnalysis: string; // Comprehensive analysis text
+  skillAssessment: Record<string, number>; // Skill categories and scores
+}
+
+// Zod schemas for validation
+export const zodSessionReportData = z.object({
+  sessionId: z.string(),
+  durationInSeconds: z.number(),
+  history: zodMvpSessionTurnArray,
+  questionCount: z.number(),
+  completionPercentage: z.number(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  averageResponseTime: z.number(),
+  personaId: z.string(),
+  jdResumeTextId: z.string(),
+});
+
+export const zodSessionAnalyticsData = z.object({
+  sessionId: z.string(),
+  totalQuestions: z.number(),
+  totalAnswers: z.number(),
+  averageResponseTime: z.number(),
+  responseTimeMetrics: z.array(z.number()),
+  completionPercentage: z.number(),
+  sessionDurationMinutes: z.number(),
+  performanceScore: z.number(),
+});
+
+export const zodSessionFeedbackData = z.object({
+  sessionId: z.string(),
+  overallScore: z.number(),
+  strengths: z.array(z.string()),
+  areasForImprovement: z.array(z.string()),
+  recommendations: z.array(z.string()),
+  detailedAnalysis: z.string(),
+  skillAssessment: z.record(z.string(), z.number()),
+});

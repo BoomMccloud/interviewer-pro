@@ -36,19 +36,22 @@ const mockDevSession: Session = {
  * instead of directly calling `auth()` or `realAuth()`.
  * 
  * Environment variable priority:
- * 1. E2E_TESTING=true - Returns E2E test session
- * 2. DEV_BYPASS_AUTH=true - Returns development session  
+ * 1. E2E_TESTING=true - Returns E2E test session (non-production only)
+ * 2. DEV_BYPASS_AUTH=true - Returns development session (non-production only)
  * 3. Normal operation - Returns real NextAuth session
  */
 export const getSessionForTest = async (): Promise<Session | null> => {
+  // Only allow bypasses in non-production environments for extra safety
+  const isProduction = process.env.NODE_ENV === 'production';
+  
   // Check if we are in the E2E test environment (highest priority)
-  if (process.env.E2E_TESTING === 'true') {
+  if (!isProduction && process.env.E2E_TESTING === 'true') {
     console.log('[AuthUtil] E2E Test Mode: Returning mock session.');
     return mockE2eSession;
   }
   
   // Check if we want to bypass auth for development (second priority)
-  if (process.env.DEV_BYPASS_AUTH === 'true') {
+  if (!isProduction && process.env.DEV_BYPASS_AUTH === 'true') {
     console.log('[AuthUtil] Development Mode: Bypassing auth with mock session.');
     return mockDevSession;
   }

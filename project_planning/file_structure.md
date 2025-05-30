@@ -38,7 +38,14 @@
 │   │   │   ├── InterviewUI/
 │   │   │   │   └── TextInterviewUI.tsx    # Chat-based interface component for text interviews
 │   │   │   ├── ReportViewer.tsx      # Main component to display the report structure
-│   │   │   └── QuestionFeedback.tsx  # Displays question, answer, basic feedback, and suggested alternative
+│   │   │   ├── QuestionFeedback.tsx  # Displays question, answer, basic feedback, and suggested alternative
+│   │   │   ├── SessionOverview.tsx   # Session metadata, duration, and performance summary 🆕 Phase 2
+│   │   │   ├── SessionTimeline.tsx   # Chronological Q&A display with timestamps 🆕 Phase 2
+│   │   │   ├── SessionAnalytics.tsx  # Performance charts and visual metrics 🆕 Phase 2
+│   │   │   ├── SessionFeedback.tsx   # AI-generated feedback and recommendations 🆕 Phase 2
+│   │   │   ├── QuestionAnswerCard.tsx # Individual Q&A display component 🆕 Phase 2
+│   │   │   ├── PerformanceChart.tsx  # Chart visualization for performance data 🆕 Phase 2
+│   │   │   └── FeedbackCard.tsx      # Individual feedback section display 🆕 Phase 2
 │   │   └── Layout/         # Basic layout components (optional)
 │   │       └── ...
 │   ├── lib/            # Backend-specific libraries or helpers         ✅ Exists
