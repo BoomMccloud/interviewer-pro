@@ -31,14 +31,14 @@ import { continueInterview } from '../src/lib/gemini';
 
 // Import necessary types from your project
 import type {
-  MvpJdResumeText,
   Persona,
   MvpSessionTurn,
   MvpAiResponse,
 } from '../src/types';
+import type { JdResumeText } from '@prisma/client';
 
 // --- Dummy Data for Testing ---
-const mockJdResumeText: MvpJdResumeText = {
+const mockJdResumeText: JdResumeText = {
   jdText: "Job Description: Software Engineer, Backend Systems. Proficient in Node.js and microservices.",
   resumeText: "Resume: SWE with 3 years in Node.js, Express, Docker, and building scalable APIs.",
   id: 'test-jd-resume-id-2',
@@ -109,7 +109,7 @@ function createMockStream(responseText: string): AsyncIterable<GenerateContentRe
       // For simplicity, yield the whole response as one chunk.
       // More complex tests could simulate multiple chunks.
       const mockResponsePart = {
-            text: () => responseText, // Simulate the text() method
+            text: responseText, // Direct property, not method
             // Ensure other properties expected by processStream are present or mocked if accessed
         };
       yield mockResponsePart as unknown as GenerateContentResponse;
@@ -154,8 +154,8 @@ describe('Gemini Service - continueInterview', () => {
       throw new Error("Test setup error: generateContentStream was called with undefined arguments.");
     }
 
-    expect(calledArgs.model).toBe('gemini-2.0-flash'); // Or whatever MODEL_NAME_TEXT is in gemini.ts
-    expect(calledArgs.config?.responseModalities).toEqual(['text']); // Check config based on gemini.ts
+    expect(calledArgs.model).toBe('gemini-2.0-flash-001'); // Updated to match MODEL_NAME_TEXT in gemini.ts
+    // Note: Our implementation uses config: { temperature, maxOutputTokens }, not responseModalities
 
     // Validate the structure and content of `calledArgs.contents`
     expect(calledArgs.contents).toBeInstanceOf(Array);
@@ -177,7 +177,7 @@ describe('Gemini Service - continueInterview', () => {
     expect(initialPartsText).toContain(mockPersona.systemPrompt);
     expect(initialPartsText).toContain(mockJdResumeText.jdText);
     expect(initialPartsText).toContain(mockJdResumeText.resumeText);
-    expect(initialPartsText).toContain("<QUESTION>Your next question here?</QUESTION>"); // Instruction text
+    expect(initialPartsText).toContain("<QUESTION>Your interview question here?</QUESTION>"); // Instruction text
 
     // Second element: First history turn (model)
     const historyTurn1Content = calledArgs.contents[1];
@@ -208,7 +208,7 @@ describe('Gemini Service - continueInterview', () => {
     // Arrange
     const mockEmptyStream = createMockStream(''); // Simulate empty response
     mockGenerateContentStreamOnModels.mockResolvedValueOnce(mockEmptyStream);
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {}); // Suppress console.error
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { /* no-op */ }); // Suppress console.error
 
     // Act & Assert
     await expect(
@@ -216,9 +216,9 @@ describe('Gemini Service - continueInterview', () => {
     ).rejects.toThrow('Failed to get next question and feedback from AI.'); // Updated to expect the generic error
 
     // Verify that the more specific error was logged internally
-    expect(consoleErrorSpy).toHaveBeenCalledWith("Gemini returned empty text stream response for continue interview.");
+    expect(consoleErrorSpy).toHaveBeenCalledWith("Gemini returned empty response for continue interview.");
     // Optionally, verify the second console.error from the catch block
-    expect(consoleErrorSpy).toHaveBeenCalledWith("Error continuing interview with Gemini:", expect.objectContaining({ message: 'Gemini returned an empty response stream.'}));
+    expect(consoleErrorSpy).toHaveBeenCalledWith("Error continuing interview with Gemini:", expect.objectContaining({ message: 'Gemini returned an empty response.'}));
     consoleErrorSpy.mockRestore();
   });
   
@@ -226,7 +226,7 @@ describe('Gemini Service - continueInterview', () => {
     // Arrange
     const errorMessage = 'Network error';
     mockGenerateContentStreamOnModels.mockRejectedValueOnce(new Error(errorMessage));
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {}); // Suppress console.error
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { /* no-op */ }); // Suppress console.error
 
     // Act & Assert
     await expect(

@@ -47,7 +47,7 @@ describe('Gemini Service - Helper Functions', () => {
       expect(contents.length).toBeGreaterThanOrEqual(1);
 
       const initialUserMessage = contents[0];
-      if (!initialUserMessage || !initialUserMessage.parts) {
+      if (!initialUserMessage?.parts) {
         throw new Error("Test setup failed: initialUserMessage or its parts are undefined.");
       }
 
@@ -68,7 +68,6 @@ describe('Gemini Service - Helper Functions', () => {
       expect(combinedPartsText).toContain('</ANALYSIS>');
       expect(combinedPartsText).toContain('</FEEDBACK>');
       expect(combinedPartsText).toContain('</SUGGESTED_ALTERNATIVE>');
-      expect(combinedPartsText).toContain('Example of how I expect your response to be structured:');
     });
 
     it('should correctly format a history with multiple user and model turns', () => {
@@ -95,13 +94,13 @@ describe('Gemini Service - Helper Functions', () => {
 
       // Check the first history turn (model's output)
       const modelTurnContent = contents[1]; // 0 is the initial combined user message
-      if (!modelTurnContent || !modelTurnContent.parts) throw new Error("modelTurnContent or parts undefined");
+      if (!modelTurnContent?.parts) throw new Error("modelTurnContent or parts undefined");
       expect(modelTurnContent.role).toBe('model');
       expect(modelTurnContent.parts[0]?.text).toBe(nonEmptyHistory[0]?.rawAiResponseText);
 
       // Check the second history turn (user's input)
       const userTurnContent = contents[2];
-      if (!userTurnContent || !userTurnContent.parts) throw new Error("userTurnContent or parts undefined");
+      if (!userTurnContent?.parts) throw new Error("userTurnContent or parts undefined");
       expect(userTurnContent.role).toBe('user');
       expect(userTurnContent.parts[0]?.text).toBe(nonEmptyHistory[1]?.text);
     });

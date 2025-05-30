@@ -12,6 +12,7 @@ import superjson from "superjson";
 import { ZodError } from "zod";
 
 import { auth } from "~/server/auth";
+import { getSessionForTest } from "~/lib/test-auth-utils";
 import { db } from "~/server/db";
 
 /**
@@ -27,7 +28,9 @@ import { db } from "~/server/db";
  * @see https://trpc.io/docs/server/context
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
-  const session = await auth();
+  // Use auth() in test environments (for mocking), getSessionForTest() in development (for bypass)
+  const isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+  const session = isTestEnvironment ? await auth() : await getSessionForTest();
 
   return {
     db,

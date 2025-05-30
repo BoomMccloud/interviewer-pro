@@ -39,12 +39,12 @@ import { getFirstQuestion } from '../src/lib/gemini';
 
 // Import necessary types from your project
 import type {
-  MvpJdResumeText,
   Persona,
 } from '../src/types';
+import type { JdResumeText } from '@prisma/client';
 
 // --- Dummy Data for Testing ---
-const mockJdResumeText: MvpJdResumeText = {
+const mockJdResumeText: JdResumeText = {
   jdText: "Job Description: Senior Software Engineer, AI Division. Requires 5+ years of Python, ML, and cloud platforms.",
   resumeText: "Resume: Experienced SDE with 7 years in Python, PyTorch, AWS, and leading ML projects.",
   id: 'test-jd-resume-id',
@@ -81,7 +81,7 @@ function createMockStream(responseText: string): AsyncIterable<GenerateContentRe
     async *[Symbol.asyncIterator]() {
       for (const chunk of chunks) {
         const mockResponsePart = {
-            text: chunk,      
+            text: chunk,      // Direct property, not method
             functionCalls: [] as FunctionCall[],
             data: '',        
             executableCode: '', 
@@ -134,7 +134,7 @@ describe('Gemini Service - Single Test for getFirstQuestion', () => {
       throw new Error("Test setup error: generateContentStream was called with undefined arguments.");
     }
 
-    expect(calledArgs.model).toBe('gemini-2.0-flash'); 
+    expect(calledArgs.model).toBe('gemini-2.0-flash-001'); 
     expect(calledArgs.contents).toBeInstanceOf(Array);
     if (!calledArgs.contents || calledArgs.contents.length === 0) {
       throw new Error("Test assertion failed: calledArgs.contents is empty or undefined.");

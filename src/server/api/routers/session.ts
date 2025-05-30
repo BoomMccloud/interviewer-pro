@@ -748,7 +748,7 @@ export const sessionRouter = createTRPCRouter({
       });
     }),
 
-  // 🟢 GREEN PHASE: getActiveSession procedure
+  // 🟢 COMPLETED: getActiveSession procedure with real data
   getActiveSession: protectedProcedure
     .input(z.object({
       sessionId: z.string(),
@@ -773,29 +773,51 @@ export const sessionRouter = createTRPCRouter({
         });
       }
 
-      // For TDD GREEN phase: return minimal response
-      // TODO: Implement full session state recovery in REFACTOR phase
-      const mockConversationHistory = [
-        {
-          role: 'ai' as const,
-          content: 'Tell me about yourself.',
-          timestamp: new Date().toISOString(),
-        },
-        {
-          role: 'user' as const,
-          content: 'I am a software engineer.',
-          timestamp: new Date().toISOString(),
-        },
-      ];
+      // Parse existing conversation history
+      let history: MvpSessionTurn[] = [];
+      if (session.history) {
+        try {
+          history = zodMvpSessionTurnArray.parse(session.history);
+        } catch (error) {
+          console.error("Failed to parse session history:", error);
+          // If history is corrupted, start fresh
+          history = [];
+        }
+      }
+
+      // Convert history to frontend format
+      const conversationHistory = history.map(turn => ({
+        role: turn.role === 'model' ? 'ai' as const : 'user' as const,
+        content: turn.text,
+        timestamp: typeof turn.timestamp === 'string' ? turn.timestamp : turn.timestamp.toISOString(),
+      }));
+
+      // Find the most recent AI question for currentQuestion
+      const lastAiMessage = history
+        .filter(turn => turn.role === 'model')
+        .pop();
+
+      // Determine current question
+      let currentQuestion = 'Loading...';
+      let questionNumber = 1;
+
+      if (lastAiMessage) {
+        currentQuestion = lastAiMessage.text;
+        questionNumber = history.filter(turn => turn.role === 'model').length;
+      } else {
+        // No questions yet - this is a brand new session that needs to be started
+        currentQuestion = 'Interview not started yet. Please start the interview.';
+        questionNumber = 0;
+      }
 
       return {
         sessionId: input.sessionId,
         isActive: session.endTime === null, // endTime === null means active
         personaId: session.personaId,
-        currentQuestion: 'What are your strengths?',
-        conversationHistory: mockConversationHistory,
-        questionNumber: 2,
-        timeRemaining: 3500,
+        currentQuestion,
+        conversationHistory,
+        questionNumber,
+        timeRemaining: session.durationInSeconds ?? 1800, // Use actual duration or default
       };
     }),
 });
