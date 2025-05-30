@@ -23,8 +23,43 @@ async function createDevSession() {
     } else {
       console.log('✅ Found dev user:', user.id);
     }
+
+    // Check existing sessions
+    console.log('\n🔍 Checking existing sessions...');
+    const existingSessions = await db.sessionData.findMany({
+      where: { userId: DEV_USER_ID },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      include: {
+        jdResumeText: {
+          select: {
+            id: true,
+            jdText: true,
+            resumeText: true,
+          }
+        }
+      }
+    });
+
+    if (existingSessions.length > 0) {
+      console.log(`\nFound ${existingSessions.length} recent sessions for dev user:`);
+      existingSessions.forEach((session, index) => {
+        console.log(`\n${index + 1}. ID: ${session.id}`);
+        console.log(`   Status: ${session.endTime ? 'Completed' : 'Active'}`);
+        console.log(`   Created: ${session.createdAt.toISOString()}`);
+        console.log(`   Persona: ${session.personaId}`);
+        console.log(`   URL: http://localhost:3000/sessions/${session.id}`);
+      });
+
+      const activeSessions = existingSessions.filter(s => !s.endTime);
+      if (activeSessions.length > 0) {
+        console.log('\n⚠️  You have active sessions. Consider using one of these instead of creating a new one.');
+        return;
+      }
+    }
     
     // Create JdResumeText for the dev user
+    console.log('\n🔧 Creating new session resources...');
     const jdResumeText = await db.jdResumeText.create({
       data: {
         userId: user.id,
@@ -44,8 +79,8 @@ async function createDevSession() {
       }
     });
     
-    console.log('✅ Created test session:', testSession.id);
-    console.log('🌐 URL to test: http://localhost:3000/sessions/' + testSession.id);
+    console.log('\n✅ Created new test session!');
+    console.log('🔗 Session URL: http://localhost:3000/sessions/' + testSession.id);
     console.log('💡 This session matches the DEV_BYPASS_AUTH user ID (dev-user-123)');
     
   } catch (error) {

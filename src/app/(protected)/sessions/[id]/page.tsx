@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
 import Timer from '~/components/UI/Timer';
@@ -21,6 +21,9 @@ export default function SessionPage() {
   const [currentModality, setCurrentModality] = useState<InterviewModality>('text');
   const [currentQuestion, setCurrentQuestion] = useState<string>('');
   const [isProcessingResponse, setIsProcessingResponse] = useState(false);
+  
+  // Ref to track if auto-start has been attempted to prevent multiple calls
+  const autoStartAttempted = useRef(false);
 
   // Fetch active session data from our backend
   const { data: sessionData, isLoading, error } = api.session.getActiveSession.useQuery({ 
@@ -38,8 +41,14 @@ export default function SessionPage() {
       setCurrentQuestion(sessionData.currentQuestion);
       
       // Auto-start interview if it hasn't been started yet (questionNumber = 0)
-      if (sessionData.questionNumber === 0 && sessionData.currentQuestion.includes('not started')) {
+      // Only attempt once to prevent infinite loops
+      if (sessionData.questionNumber === 0 && 
+          sessionData.currentQuestion.includes('not started') && 
+          !autoStartAttempted.current) {
+        
         console.log('Auto-starting interview session...');
+        autoStartAttempted.current = true; // Mark as attempted
+        
         startInterviewMutation.mutate({
           sessionId,
           personaId: sessionData.personaId,
@@ -50,11 +59,13 @@ export default function SessionPage() {
           },
           onError: (error) => {
             console.error('Failed to start interview:', error);
+            // Reset the flag on error so user can try again if needed
+            autoStartAttempted.current = false;
           }
         });
       }
     }
-  }, [sessionData, sessionId, startInterviewMutation]);
+  }, [sessionData, sessionId]); // Removed startInterviewMutation from dependencies
 
   const handleSendMessage = async (messageText: string) => {
     if (!sessionData || isProcessingResponse) return;
