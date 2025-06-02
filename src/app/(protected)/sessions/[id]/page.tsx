@@ -3,6 +3,7 @@
 import React from 'react';
 import { useParams } from 'next/navigation';
 import { ControlBar } from '~/components/Sessions/DesignUI/control-bar';
+import Timer from '~/components/UI/Timer';
 
 export default function SessionPage() {
   const params = useParams();
@@ -21,8 +22,21 @@ export default function SessionPage() {
     console.log('End interview');
   };
 
+  const handleTimerEnd = () => {
+    console.log('Interview time expired');
+    // Could automatically end the interview or show a warning
+  };
+
   return (
     <div className="h-screen bg-white dark:bg-slate-900 flex flex-col">
+      {/* Timer positioned to avoid theme toggle overlap */}
+      <div className="absolute top-20 right-4 z-10">
+        <Timer 
+          initialSeconds={1800} // 30 minutes
+          onTimerEnd={handleTimerEnd}
+        />
+      </div>
+
       {/* Main content area - flexible */}
       <div className="flex-1 p-8">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">

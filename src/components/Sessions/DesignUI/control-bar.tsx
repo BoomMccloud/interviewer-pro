@@ -18,7 +18,7 @@ export function ControlBar({ onPrevious, onNext, onEnd, isFirstQuestion, isLastQ
 
   return (
     <div className="h-16 bg-gray-100 dark:bg-slate-900 border border-gray-300 dark:border-gray-600 rounded-lg mx-0 my-4 py-2 px-6">
-      <div className="max-w-7xl mx-auto h-full flex items-center justify-between">
+      <div className="h-full flex items-center justify-between">
         {/* Left - Microphone */}
         <div className="flex items-center">
           <button

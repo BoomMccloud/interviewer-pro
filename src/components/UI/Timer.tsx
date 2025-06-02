@@ -51,20 +51,33 @@ const Timer: React.FC<TimerProps> = ({ initialSeconds, onTimerEnd, className }) 
     }
   }, [initialSeconds]);
 
-
   const formatTime = (seconds: number): string => {
     const minutes = Math.max(0, Math.floor(seconds / 60));
     const secs = Math.max(0, seconds % 60);
     return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Determine color based on remaining time
+  const getTimerColor = () => {
+    if (remainingSeconds <= 60) return 'text-red-500 dark:text-red-400'; // Last minute - red
+    if (remainingSeconds <= 300) return 'text-yellow-500 dark:text-yellow-400'; // Last 5 minutes - yellow
+    return 'text-green-500 dark:text-green-400'; // Normal - green
+  };
+
   return (
-    <div className={`timer-display ${className ?? ''}`.trim()} role="timer" aria-live="off">
-      {/* Using a more descriptive text or specific elements for minutes and seconds might be better for screen readers 
-          For MVP, keeping it simple. The aria-live="off" is because the content updates frequently.
-          A better approach for accessibility might involve a more static label and aria-atomic updates.
-      */}
-      <p>Time Remaining: {formatTime(remainingSeconds)}</p>
+    <div 
+      className={`inline-flex items-center px-4 py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm ${className ?? ''}`.trim()} 
+      role="timer" 
+      aria-live="off"
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Time:
+        </span>
+        <span className={`text-lg font-bold tabular-nums ${getTimerColor()}`}>
+          {formatTime(remainingSeconds)}
+        </span>
+      </div>
     </div>
   );
 };
