@@ -1,67 +1,42 @@
+/**
+ * Timer Component - Shows elapsed time during an interview session
+ * Key functions: Counts up from 00:00, displays time in MM:SS format, changes color based on duration
+ */
+
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 
 interface TimerProps {
-  initialSeconds: number; // Initial time in seconds
-  onTimerEnd?: () => void; // Optional callback when timer ends
   className?: string;
 }
 
-const Timer: React.FC<TimerProps> = ({ initialSeconds, onTimerEnd, className }) => {
-  const [remainingSeconds, setRemainingSeconds] = useState(initialSeconds);
+const Timer: React.FC<TimerProps> = ({ className }) => {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerIdRef = useRef<NodeJS.Timeout | null>(null);
-  const onTimerEndRef = useRef(onTimerEnd); // Ref to store the latest onTimerEnd callback
-
-  // Update ref if onTimerEnd prop changes
-  useEffect(() => {
-    onTimerEndRef.current = onTimerEnd;
-  }, [onTimerEnd]);
 
   useEffect(() => {
-    if (remainingSeconds <= 0) {
-      if (timerIdRef.current) clearInterval(timerIdRef.current);
-      if (onTimerEndRef.current) {
-        onTimerEndRef.current();
-      }
-      return;
-    }
-
+    // Start the timer immediately
     timerIdRef.current = setInterval(() => {
-      setRemainingSeconds((prevSeconds) => Math.max(0, prevSeconds - 1));
+      setElapsedSeconds((prevSeconds) => prevSeconds + 1);
     }, 1000);
 
     return () => {
       if (timerIdRef.current) clearInterval(timerIdRef.current);
     };
-  }, [remainingSeconds]);
-
-  // Reset timer if initialSeconds changes
-  useEffect(() => {
-    setRemainingSeconds(initialSeconds);
-    // Clear existing interval if initialSeconds changes mid-timer
-    if (timerIdRef.current) {
-      clearInterval(timerIdRef.current);
-    }
-    // Restart interval if initialSeconds > 0
-    if (initialSeconds > 0) {
-        timerIdRef.current = setInterval(() => {
-            setRemainingSeconds((prevSeconds) => Math.max(0, prevSeconds - 1));
-        }, 1000);
-    }
-  }, [initialSeconds]);
+  }, []);
 
   const formatTime = (seconds: number): string => {
-    const minutes = Math.max(0, Math.floor(seconds / 60));
-    const secs = Math.max(0, seconds % 60);
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
     return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Determine color based on remaining time
+  // Determine color based on elapsed time
   const getTimerColor = () => {
-    if (remainingSeconds <= 60) return 'text-red-500 dark:text-red-400'; // Last minute - red
-    if (remainingSeconds <= 300) return 'text-yellow-500 dark:text-yellow-400'; // Last 5 minutes - yellow
-    return 'text-green-500 dark:text-green-400'; // Normal - green
+    if (elapsedSeconds >= 1800) return 'text-red-500 dark:text-red-400'; // Over 30 minutes - red
+    if (elapsedSeconds >= 900) return 'text-yellow-500 dark:text-yellow-400'; // Over 15 minutes - yellow
+    return 'text-green-500 dark:text-green-400'; // Under 15 minutes - green
   };
 
   return (
@@ -75,7 +50,7 @@ const Timer: React.FC<TimerProps> = ({ initialSeconds, onTimerEnd, className }) 
           Time:
         </span>
         <span className={`text-lg font-bold tabular-nums ${getTimerColor()}`}>
-          {formatTime(remainingSeconds)}
+          {formatTime(elapsedSeconds)}
         </span>
       </div>
     </div>

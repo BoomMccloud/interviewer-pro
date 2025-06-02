@@ -22,19 +22,11 @@ export default function SessionPage() {
     console.log('End interview');
   };
 
-  const handleTimerEnd = () => {
-    console.log('Interview time expired');
-    // Could automatically end the interview or show a warning
-  };
-
   return (
     <div className="h-screen bg-white dark:bg-slate-900 flex flex-col">
       {/* Timer positioned to avoid theme toggle overlap */}
       <div className="absolute top-20 right-4 z-10">
-        <Timer 
-          initialSeconds={1800} // 30 minutes
-          onTimerEnd={handleTimerEnd}
-        />
+        <Timer />
       </div>
 
       {/* Main content area - flexible */}
