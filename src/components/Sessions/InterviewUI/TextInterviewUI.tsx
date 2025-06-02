@@ -152,7 +152,7 @@ export default function TextInterviewUI({
           </div>
 
           {/* Timer Container */}
-          <div className="flex-shrink-0 flex items-stretch">
+          <div className="flex-shrink-0 flex items-center">
             <Timer />
           </div>
         </div>

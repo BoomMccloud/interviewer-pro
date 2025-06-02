@@ -201,7 +201,7 @@ export default function VoiceInterviewUI({
           </div>
 
           {/* Timer Container */}
-          <div className="flex-shrink-0 flex items-stretch">
+          <div className="flex-shrink-0 flex items-center">
             <Timer />
           </div>
         </div>
