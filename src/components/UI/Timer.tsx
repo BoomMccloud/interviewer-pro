@@ -41,7 +41,7 @@ const Timer: React.FC<TimerProps> = ({ className }) => {
 
   return (
     <div 
-      className={`flex flex-col items-center justify-center w-20 h-20 bg-slate-900 dark:bg-white border-2 border-slate-700 dark:border-slate-300 rounded-lg shadow-lg ${className ?? ''}`.trim()} 
+      className={`flex flex-col items-center justify-center w-24 h-24 bg-slate-900 dark:bg-white border-2 border-slate-700 dark:border-slate-300 rounded-lg shadow-lg ${className ?? ''}`.trim()} 
       role="timer" 
       aria-live="off"
     >
