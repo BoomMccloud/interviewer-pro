@@ -36,15 +36,15 @@ During Phase 1 development, we discovered a critical architectural mismatch: the
 
 ## Phase 3: Interview Simulation UI & Live Interaction - **🚧 ACTIVE DEVELOPMENT**
 
-**Goal:** Build the core interview experience where users conduct real-time AI-powered mock interviews with dynamic question/answer flow, persona selection, and session management.
+**Goal:** Build the core interview experience where users conduct real-time AI-powered mock interviews with dynamic question/answer flow, multi-modal interaction, and session management.
 
 **Status: ✅ Phase 3A COMPLETED → 🚧 Phase 3B Frontend Implementation Starting**
 
 ### **🎯 Phase 3 Objectives**
 
 **Core Features:**
-- **Live Interview Interface**: Real-time Q&A flow with AI interviewer at `/sessions/[id]`
-- **Multi-Modal Interaction**: Text-based conversation with future voice support
+- **Live Interview Interface**: Real-time Q&A flow with AI interviewer at `/sessions/[id]?mode={text|voice|avatar}`
+- **Multi-Modal Support**: Parameter-based mode selection with text, voice, and avatar interfaces
 - **Session Management**: Timer, progress tracking, session state persistence
 - **AI Response Generation**: Dynamic question generation and response evaluation
 - **Persona System**: Multiple interviewer personalities and interview styles
@@ -53,7 +53,7 @@ During Phase 1 development, we discovered a critical architectural mismatch: the
 **User Value:**
 - Conduct realistic mock interviews with AI-powered interviewers
 - Practice responses in real-time with immediate AI feedback
-- Experience different interview styles through persona selection
+- Experience different interview modalities based on preferences and purchases
 - Build confidence through repeated practice sessions
 - Track progress and improvement across multiple sessions
 
@@ -120,120 +120,174 @@ getActiveSession: protectedProcedure
   });
 ```
 
-**🎯 COMPLETE Test Results (11/11 PASSING):**
-- ✅ `should initialize session with persona and generate first question`
-- ✅ `should reject starting session for different user`
-- ✅ `should reject starting already completed session`
-- ✅ `should process user response and generate next question`
-- ✅ `should mark session as complete when interview finished`
-- ✅ `should pause active session by storing state in history`
-- ✅ `should resume paused session`
-- ✅ `should end session and set completion time`
-- ✅ `should retrieve current session state for recovery`
-- ✅ `should return null for non-existent session`
-- ✅ `should reject access to other user session`
+---
 
-### **🏆 Technical Architecture Delivered:**
+## **🚧 CURRENT DEVELOPMENT: Phase 3B Frontend Implementation**
 
-**✅ Core Capabilities:**
-- **Real-time conversation management** with JSON history storage
-- **Pause/resume functionality** with partial response preservation  
-- **Session completion detection** and automatic database updates
-- **Multi-user support** with comprehensive authorization
-- **AI service integration** with streaming response handling
-- **Error handling** with comprehensive tRPC error responses
-- **Type safety** with end-to-end TypeScript validation
+**Status: 🚧 ACTIVE - Parameter-Based Modality Implementation**
 
-**✅ Production Features:**
-- **Database Integration**: Proper Prisma client usage with relationships
-- **Session Lifecycle**: Complete created → active → paused/completed flow
-- **Conversation Persistence**: MvpSessionTurn schema with history management
-- **Authentication Security**: User validation and session access control
-- **Error Handling**: Comprehensive edge case coverage and validation
-- **Code Quality**: Clean, documented, maintainable production code
+### **🎯 NEW ARCHITECTURE DECISION: Parameter-Based Modality**
+
+**✅ STRATEGIC DECISION: Query Parameter Approach**
+Instead of complex modality detection logic, we're implementing a clean parameter-based system:
+
+**URL Structure:**
+```
+/sessions/[id]?mode=text     # Text-based interview
+/sessions/[id]?mode=voice    # Voice-based interview  
+/sessions/[id]?mode=avatar   # Avatar-based interview
+```
+
+**Benefits:**
+- ✅ **Simplified Logic**: No complex detection algorithms needed
+- ✅ **Explicit Choice**: User consciously selects their preferred mode
+- ✅ **Bookmarkable URLs**: Users can bookmark their preferred interview mode
+- ✅ **Easier Testing**: Simple URL parameter testing vs complex detection logic
+- ✅ **Clear Separation**: Mode selection happens before session starts
+- ✅ **Better UX**: User knows exactly what they're getting
+
+### **🏗️ Updated Implementation Strategy**
+
+**Phase 3B Architecture:**
+```typescript
+// src/app/(protected)/sessions/[id]/page.tsx
+export default function SessionPage() {
+  const sessionId = useParams().id as string;
+  const mode = useSearchParams().get('mode') || 'text'; // Default to text
+  
+  const renderInterviewMode = () => {
+    switch (mode) {
+      case 'text': return <TextInterviewUI sessionId={sessionId} />;
+      case 'voice': return <VoiceInterviewUI sessionId={sessionId} />;
+      case 'avatar': return <AvatarInterviewUI sessionId={sessionId} />;
+      default: return <TextInterviewUI sessionId={sessionId} />; // Fallback
+    }
+  };
+
+  return (
+    <div className="h-screen bg-white dark:bg-slate-900 flex flex-col">
+      <Timer /> {/* Keep existing timer */}
+      <div className="flex-1">
+        {renderInterviewMode()}
+      </div>
+    </div>
+  );
+}
+```
+
+### **🎯 Phase 3B Implementation Plan**
+
+**Week 1: Core Integration (Strategy 1 - Rapid Integration)**
+- ✅ **Replace Current Page**: Use existing TextInterviewUI as foundation
+- 🚧 **Add Parameter Handling**: Implement ?mode= parameter detection
+- 🚧 **tRPC Integration**: Connect TextInterviewUI to working backend procedures
+- 🚧 **Session State Management**: Real-time session synchronization
+
+**Week 2: Multi-Modal Enhancement**
+- 🚧 **Voice Mode**: Integrate existing VoiceInterviewUI component
+- 🚧 **Avatar Mode**: Build AvatarInterviewUI based on existing avatar components
+- 🚧 **Mode Selection UI**: Dashboard interface for mode selection
+- 🚧 **Entitlement Checking**: Basic feature access validation
+
+**Week 3: Polish & Integration**
+- 🚧 **End-to-End Testing**: Complete interview flow validation
+- 🚧 **Error Handling**: Comprehensive error states and recovery
+- 🚧 **Performance Optimization**: Loading states and responsiveness
+- 🚧 **Purchase Integration**: Feature entitlement and purchase flows
+
+### **🎮 Mode Selection Flow**
+
+**Dashboard/Session Creation:**
+```typescript
+const ModeSelectorCard = ({ sessionId }: { sessionId: string }) => {
+  const { data: entitlements } = api.user.getEntitlements.useQuery();
+  
+  return (
+    <div className="grid grid-cols-3 gap-4">
+      <ModeCard 
+        mode="text"
+        title="Text Interview"
+        available={entitlements?.text?.enabled}
+        onClick={() => router.push(`/sessions/${sessionId}?mode=text`)}
+      />
+      <ModeCard 
+        mode="voice" 
+        title="Voice Interview"
+        available={entitlements?.voice?.enabled}
+        onClick={() => router.push(`/sessions/${sessionId}?mode=voice`)}
+      />
+      <ModeCard 
+        mode="avatar"
+        title="Avatar Interview" 
+        available={entitlements?.avatar?.enabled}
+        onClick={() => router.push(`/sessions/${sessionId}?mode=avatar`)}
+      />
+    </div>
+  );
+};
+```
+
+### **🎯 Available Components for Integration**
+
+**✅ Ready-to-Use Components:**
+- **TextInterviewUI** - Complete conversation interface with tRPC integration points
+- **VoiceInterviewUI** - Voice recording interface with processing states
+- **Timer** - Elapsed time tracking (updated to count up)
+- **ControlBar** - Session controls with full-width distribution
+- **QuestionDisplay** - Current question presentation
+- **InterviewerAvatar** - AI avatar interface components
+
+**🚧 Integration Points:**
+- **tRPC Hooks**: Connect UI components to working backend procedures
+- **Session State**: Real-time synchronization with database
+- **Error Handling**: Comprehensive error states and user feedback
+- **Loading States**: Processing indicators and responsive feedback
 
 ---
 
-## **📊 Outstanding Achievement: TDD SUCCESS**
+## **📊 Updated Technical Architecture**
 
-### **✅ EXCEEDED EXPECTATIONS:**
-- **Original Goal**: Basic backend procedures for frontend integration
-- **Actual Achievement**: Production-ready backend with 100% test coverage
-- **Quality Level**: Enterprise-grade code with comprehensive error handling
-- **Timeline**: Completed ahead of schedule with superior quality
+### **✅ STRENGTHS:**
+- **Backend Complete**: Production-ready API with 100% test coverage
+- **UI Components Ready**: Feature-complete interview interfaces available
+- **Parameter-Based Routing**: Simplified, clean architecture
+- **Existing Infrastructure**: Timer, controls, and layout components working
 
-### **🎯 TDD METHODOLOGY SUCCESS:**
-- **Original Plan**: Direct implementation approach
-- **Implemented Approach**: Complete Test-Driven Development
-- **Result**: Zero technical debt, 100% test coverage, production-ready code
-- **Impact**: Solid foundation ready for immediate frontend integration
-
-### **🚀 ACCELERATED PROGRESS:**
-- **Original Timeline**: 1-2 weeks for Phase 3A
-- **Actual Timeline**: Completed in days with superior quality
-- **Quality Achievement**: Production-ready vs. prototype level
-- **Ready for**: Immediate Phase 3B frontend development
+### **🚧 CURRENT PRIORITIES:**
+1. **Parameter Integration**: Implement query parameter handling in session page
+2. **tRPC Connection**: Connect TextInterviewUI to working backend procedures  
+3. **Mode Switching**: Enable seamless switching between interview modalities
+4. **Entitlement System**: Feature access validation and purchase integration
 
 ---
 
-## **🚀 Current Development Status**
+## **🎯 Current Development Status**
 
 **✅ PHASE 3A COMPLETE:**
-- ✅ **TDD Success**: Complete RED-GREEN-REFACTOR cycle
-- ✅ **Backend Foundation**: 4 production-ready procedures with 11/11 tests passing
-- ✅ **AI Integration**: Full Gemini integration pipeline working
-- ✅ **Session Management**: Complete lifecycle with pause/resume/end
-- ✅ **Authentication**: Robust user authorization and security
-- ✅ **Type Safety**: End-to-end TypeScript validation
-- ✅ **Code Quality**: Clean, documented, maintainable production code
+- ✅ **Backend Foundation**: 4 production-ready procedures (11/11 tests passing)
+- ✅ **AI Integration**: Full Gemini integration with real conversation flow
+- ✅ **Session Management**: Complete lifecycle with pause/resume/end functionality
 
-**🚧 STARTING PHASE 3B: Frontend Implementation**
-- 🚧 **Live Interview UI**: Build real-time conversation interface
-- 🚧 **Session Controls**: Implement pause/resume/end buttons
-- 🚧 **Progress Tracking**: Session timer and question progress
-- 🚧 **tRPC Integration**: Connect UI to working backend procedures
-- 🚧 **State Management**: Real-time session state synchronization
+**🚧 PHASE 3B ACTIVE:**
+- 🚧 **Parameter-Based Routing**: Implementing ?mode= approach for modality selection
+- 🚧 **UI Integration**: Connecting existing TextInterviewUI to working backend
+- 🚧 **Multi-Modal Support**: Progressive enhancement for voice/avatar modes
 
-**📋 READY FOR IMMEDIATE DEVELOPMENT:**
-- **Backend API**: Complete and tested, ready for frontend calls
-- **Type Definitions**: Full TypeScript support for frontend development
-- **Error Handling**: Comprehensive error responses for UI integration
-- **Documentation**: Clear procedure interfaces and usage patterns
+**📋 NEXT PHASE 3C:**
+- 📋 **End-to-End Testing**: Complete interview flow validation
+- 📋 **Purchase Integration**: Feature entitlement and monetization
+- 📋 **Performance Polish**: Optimization and mobile responsiveness
+
+**Revised Target: 2-3 weeks for complete Phase 3 (accelerated from original 8 weeks)**
 
 ---
 
-## **📁 Updated Implementation Roadmap**
+## **🚀 Immediate Next Steps**
 
-### **✅ COMPLETED: Phase 3A Backend Foundation** 
-- ✅ **TDD Implementation**: Complete test-driven development
-- ✅ **Production Procedures**: All 4 core procedures working (11/11 tests)
-- ✅ **AI Integration**: Real Gemini service integration
-- ✅ **Code Quality**: Clean, documented, maintainable code
+**Current Priority: Implement Parameter-Based Session Page**
+1. **Update `/sessions/[id]/page.tsx`**: Add query parameter handling for mode selection
+2. **Integrate TextInterviewUI**: Connect existing component to tRPC backend procedures
+3. **Add Mode Switching**: Enable voice/avatar modes using existing UI components
+4. **Test Integration**: Validate end-to-end interview flow with real AI backend
 
-### **🚧 CURRENT: Phase 3B Frontend Implementation (1-2 weeks)**  
-- 🚧 Build live interview interface components
-- 🚧 Integrate with completed backend procedures
-- 🚧 Add real-time conversation flow
-- 🚧 Session state management and controls
-
-### **📋 NEXT: Phase 3C Integration & Polish (1 week)**
-- 📋 End-to-end interview flow testing
-- 📋 Performance optimization 
-- 📋 Mobile responsiveness
-- 📋 Production deployment preparation
-
-**Revised Target: 2-3 weeks for complete Phase 3 (accelerated from 8 weeks)**
-
----
-
-## **🎯 Current Priority: Start Phase 3B Frontend**
-
-**Immediate next steps:**
-1. **Create interview page layout**: `/sessions/[id]` with conversation interface
-2. **Build conversation components**: Question display, answer input, conversation history
-3. **Add session controls**: Start, pause, resume, end session buttons
-4. **Integrate tRPC calls**: Connect UI to working backend procedures
-5. **Add real-time updates**: Session state synchronization and progress tracking
-6. **Polish UX**: Loading states, error handling, responsive design
-
-**Status: ✅ Phase 3A COMPLETE (11/11 tests passing) → 🚧 Phase 3B Frontend Starting** 
+**Status: ✅ Phase 3A COMPLETE → 🚧 Phase 3B Parameter Implementation Starting** 
