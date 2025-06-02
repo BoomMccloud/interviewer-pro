@@ -129,11 +129,11 @@ export default function TextInterviewUI({
             <div className="flex items-center gap-3 mb-4">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                Question {sessionData.questionNumber} • {sessionData.personaId}
+                Current Question:
               </span>
             </div>
             
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white leading-relaxed mb-4">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white leading-relaxed mb-4 p-4 bg-gray-50/30 dark:bg-slate-800/30 rounded-lg">
               {currentQuestion || 'Loading next question...'}
             </h2>
             
@@ -144,8 +144,12 @@ export default function TextInterviewUI({
                   <span className="text-blue-600 dark:text-blue-400 text-xs font-semibold">💡</span>
                 </div>
                 <div className="text-sm text-gray-700 dark:text-gray-300">
-                  <strong className="text-blue-900 dark:text-blue-400">Guidance:</strong> Take a moment to structure your response. 
-                  Consider specific examples from your experience that demonstrate your skills and impact.
+                  <strong className="text-blue-900 dark:text-blue-400">Key points:</strong>
+                  <ul className="list-disc list-inside mt-1 space-y-1">
+                    <li>Key point 1</li>
+                    <li>Key point 2</li>
+                    <li>Key point 3</li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -189,13 +193,6 @@ export default function TextInterviewUI({
                   <div className="text-sm leading-relaxed whitespace-pre-wrap">
                     {message.content}
                   </div>
-                  <div
-                    className={`text-xs mt-2 ${
-                      message.role === 'user' ? 'text-blue-100 dark:text-blue-200' : 'text-gray-500 dark:text-gray-400'
-                    }`}
-                  >
-                    {new Date(message.timestamp).toLocaleTimeString()}
-                  </div>
                 </div>
               </div>
             ))}
@@ -223,7 +220,7 @@ export default function TextInterviewUI({
       <div className="flex-shrink-0 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-gray-600 p-6">
         <div className="w-full">
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex gap-3">
+            <div className="flex gap-3 items-stretch">
               <div className="flex-1">
                 <textarea
                   ref={textareaRef}
@@ -241,11 +238,11 @@ export default function TextInterviewUI({
                   rows={2}
                 />
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex">
                 <button
                   type="submit"
                   disabled={!userInput.trim() || isProcessingResponse}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                  className="h-full px-6 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center"
                 >
                   {isProcessingResponse ? 'Sending...' : 'Send'}
                 </button>

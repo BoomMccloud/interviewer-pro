@@ -178,11 +178,11 @@ export default function VoiceInterviewUI({
             <div className="flex items-center gap-3 mb-4">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                Question {sessionData.questionNumber} • {sessionData.personaId} • Voice Mode
+                Current Question:
               </span>
             </div>
             
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white leading-relaxed mb-4">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white leading-relaxed mb-4 p-4 bg-gray-50/30 dark:bg-slate-800/30 rounded-lg">
               {currentQuestion || 'Loading next question...'}
             </h2>
             
@@ -193,8 +193,12 @@ export default function VoiceInterviewUI({
                   <span className="text-green-600 dark:text-green-400 text-xs font-semibold">🎤</span>
                 </div>
                 <div className="text-sm text-gray-700 dark:text-gray-300">
-                  <strong className="text-green-900 dark:text-green-400">Voice Guidance:</strong> Click the microphone to start recording your response. 
-                  Speak clearly and take your time to articulate your thoughts.
+                  <strong className="text-green-900 dark:text-green-400">Key points:</strong>
+                  <ul className="list-disc list-inside mt-1 space-y-1">
+                    <li>Key point 1</li>
+                    <li>Key point 2</li>
+                    <li>Key point 3</li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -336,13 +340,6 @@ export default function VoiceInterviewUI({
                       >
                         <div className="text-sm leading-relaxed whitespace-pre-wrap">
                           {message.content}
-                        </div>
-                        <div
-                          className={`text-xs mt-2 ${
-                            message.role === 'user' ? 'text-green-100 dark:text-green-200' : 'text-gray-500 dark:text-gray-400'
-                          }`}
-                        >
-                          {new Date(message.timestamp).toLocaleTimeString()}
                         </div>
                       </div>
                     </div>
