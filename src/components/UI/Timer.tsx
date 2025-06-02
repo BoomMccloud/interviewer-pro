@@ -41,18 +41,16 @@ const Timer: React.FC<TimerProps> = ({ className }) => {
 
   return (
     <div 
-      className={`inline-flex items-center px-4 py-2 bg-slate-900 dark:bg-white border-2 border-slate-700 dark:border-slate-300 rounded-lg shadow-lg ${className ?? ''}`.trim()} 
+      className={`flex flex-col items-center justify-center w-20 h-20 bg-slate-900 dark:bg-white border-2 border-slate-700 dark:border-slate-300 rounded-lg shadow-lg ${className ?? ''}`.trim()} 
       role="timer" 
       aria-live="off"
     >
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-slate-300 dark:text-slate-700">
-          Time:
-        </span>
-        <span className={`text-lg font-bold tabular-nums ${getTimerColor()}`}>
-          {formatTime(elapsedSeconds)}
-        </span>
-      </div>
+      <span className="text-xs font-medium text-slate-400 dark:text-slate-600 mb-1">
+        Time
+      </span>
+      <span className={`text-lg font-bold tabular-nums ${getTimerColor()}`}>
+        {formatTime(elapsedSeconds)}
+      </span>
     </div>
   );
 };
