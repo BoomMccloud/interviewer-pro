@@ -146,6 +146,42 @@ Instead of complex modality detection logic, we're implementing a clean paramete
 - ✅ **Clear Separation**: Mode selection happens before session starts
 - ✅ **Better UX**: User knows exactly what they're getting
 
+### **🧪 TESTING STRATEGY: Minimal Behavior Testing**
+
+**✅ STRATEGIC DECISION: Focus on Stable Business Logic**
+To avoid test maintenance overhead from UI design changes, we're implementing minimal behavior testing:
+
+**✅ SAFE TO TEST (Stable behaviors):**
+```typescript
+// ✅ User workflows - core functionality that won't change
+it('should allow user to submit a message')
+it('should show processing state while waiting for response')
+it('should handle voice recording start/stop')
+it('should navigate between interview modes via URL parameters')
+
+// ✅ Data flow - API interactions and state management
+it('should call onSendMessage with user input')
+it('should update conversation history after sending')
+it('should handle tRPC integration correctly')
+
+// ✅ Props interface - component API contracts
+it('should accept required sessionData props')
+it('should handle loading and error states correctly')
+```
+
+**❌ AVOID TESTING (Design-dependent details):**
+```typescript
+// ❌ Specific styling/layout - likely to change during design finalization
+// ❌ Exact UI structure - will evolve with mockups/designs
+// ❌ Visual details - colors, gradients, spacing specifics
+```
+
+**Benefits of This Approach:**
+- ✅ **Prevents Test Rewrites**: Focus on stable business logic
+- ✅ **Maintains TDD Momentum**: Continue test-driven development without UI coupling
+- ✅ **Design Flexibility**: UI can evolve without breaking tests
+- ✅ **Focus on Value**: Test what matters for functionality
+
 ### **🏗️ Updated Implementation Strategy**
 
 **Phase 3B Architecture:**
@@ -177,14 +213,20 @@ export default function SessionPage() {
 
 ### **🎯 Phase 3B Implementation Plan**
 
-**Week 1: Core Integration (Strategy 1 - Rapid Integration)**
-- ✅ **Replace Current Page**: Use existing TextInterviewUI as foundation
-- 🚧 **Add Parameter Handling**: Implement ?mode= parameter detection
-- 🚧 **tRPC Integration**: Connect TextInterviewUI to working backend procedures
+**Week 1: Core Integration with Minimal Testing (Strategy 1 - Rapid Integration)**
+- ✅ **Parameter Handling**: Implemented ?mode= parameter detection and routing
+- ✅ **UI Components**: TextInterviewUI, VoiceInterviewUI with full dark mode support
+- ✅ **Timer Integration**: Elapsed time counting with color progression
+- 🚧 **Minimal Behavior Tests**: Write tests for stable business logic only
+  - 🚧 User workflow tests (message submission, mode switching)
+  - 🚧 Data flow tests (tRPC integration points)
+  - 🚧 Component API tests (props handling, state management)
+  - 🚧 Parameter routing tests (URL mode handling)
+- 🚧 **tRPC Integration**: Connect UI components to working backend procedures
 - 🚧 **Session State Management**: Real-time session synchronization
 
 **Week 2: Multi-Modal Enhancement**
-- 🚧 **Voice Mode**: Integrate existing VoiceInterviewUI component
+- 🚧 **Voice Mode**: Complete voice recording integration
 - 🚧 **Avatar Mode**: Build AvatarInterviewUI based on existing avatar components
 - 🚧 **Mode Selection UI**: Dashboard interface for mode selection
 - 🚧 **Entitlement Checking**: Basic feature access validation
@@ -194,6 +236,7 @@ export default function SessionPage() {
 - 🚧 **Error Handling**: Comprehensive error states and recovery
 - 🚧 **Performance Optimization**: Loading states and responsiveness
 - 🚧 **Purchase Integration**: Feature entitlement and purchase flows
+- 🚧 **UI Design Finalization**: Implement final designs (tests won't need rewrites)
 
 ### **🎮 Mode Selection Flow**
 
@@ -284,10 +327,26 @@ const ModeSelectorCard = ({ sessionId }: { sessionId: string }) => {
 
 ## **🚀 Immediate Next Steps**
 
-**Current Priority: Implement Parameter-Based Session Page**
-1. **Update `/sessions/[id]/page.tsx`**: Add query parameter handling for mode selection
-2. **Integrate TextInterviewUI**: Connect existing component to tRPC backend procedures
-3. **Add Mode Switching**: Enable voice/avatar modes using existing UI components
-4. **Test Integration**: Validate end-to-end interview flow with real AI backend
+**Current Priority: Implement Minimal Behavior Testing for Interview Components**
+1. **Write Failing Tests for TextInterviewUI**: Focus on stable business logic only
+   - User workflow tests (message submission, form handling)
+   - Data flow tests (onSendMessage callbacks, state updates)
+   - Component API tests (props handling, loading states)
+   - Avoid testing specific styling or UI structure details
+2. **Write Failing Tests for VoiceInterviewUI**: Core recording functionality
+   - Voice recording workflow (start/stop/process)
+   - State management (recording, processing, idle states)
+   - Callback handling (onSendVoiceInput, onPause, onEnd)
+3. **Write Parameter Routing Tests**: URL-based mode switching
+   - Mode parameter detection (?mode=text/voice/avatar)
+   - Component rendering based on mode
+   - Default fallback behavior
+4. **Connect TextInterviewUI to tRPC**: Real backend integration after tests pass
 
-**Status: ✅ Phase 3A COMPLETE → 🚧 Phase 3B Parameter Implementation Starting** 
+**Testing Philosophy: Focus on What Won't Change**
+- ✅ Test user workflows and business logic
+- ✅ Test component APIs and data flow
+- ❌ Avoid testing visual details that may change with design
+- ❌ Skip styling-specific assertions until UI is finalized
+
+**Status: 🚧 Phase 3B Minimal Testing → Ready for TDD Implementation** 

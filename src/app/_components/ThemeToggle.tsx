@@ -82,22 +82,23 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   );
 };
 
-// Theme toggle button with pure Tailwind classes
+// Theme toggle button with floating design
 export const ThemeToggleButton: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-2">
+    <div className="fixed top-6 right-6 z-40 group">
       <button 
         onClick={toggleTheme}
-        className="block px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 dark:bg-slate-600 dark:hover:bg-slate-500 text-white border border-slate-600 dark:border-slate-500 cursor-pointer text-sm transition-colors"
+        className="w-12 h-12 rounded-full bg-slate-800/80 dark:bg-white/80 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-800 border border-slate-600/50 dark:border-slate-300/50 hover:border-slate-600 dark:hover:border-slate-300 cursor-pointer transition-all duration-200 backdrop-blur-sm shadow-lg hover:shadow-xl flex items-center justify-center group-hover:scale-105"
+        title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
       >
-        Switch to {theme === 'light' ? 'Dark' : 'Light'} Mode (Current: {theme})
+        {theme === 'light' ? '🌙' : '☀️'}
       </button>
       
-      {/* Test div to verify dark mode classes work */}
-      <div className="px-2 py-1 text-xs bg-white dark:bg-black text-black dark:text-white border border-gray-300 dark:border-gray-600 rounded">
-        Test: {theme} mode
+      {/* Tooltip on hover */}
+      <div className="absolute right-0 top-full mt-2 px-3 py-1 bg-slate-800 dark:bg-white text-white dark:text-slate-800 text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap shadow-lg">
+        Switch to {theme === 'light' ? 'Dark' : 'Light'} Mode
       </div>
     </div>
   );

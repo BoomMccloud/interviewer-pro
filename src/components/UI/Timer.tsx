@@ -34,19 +34,19 @@ const Timer: React.FC<TimerProps> = ({ className }) => {
 
   // Determine color based on elapsed time
   const getTimerColor = () => {
-    if (elapsedSeconds >= 1800) return 'text-red-500 dark:text-red-400'; // Over 30 minutes - red
-    if (elapsedSeconds >= 900) return 'text-yellow-500 dark:text-yellow-400'; // Over 15 minutes - yellow
-    return 'text-green-500 dark:text-green-400'; // Under 15 minutes - green
+    if (elapsedSeconds >= 1800) return 'text-red-400 dark:text-red-600'; // Over 30 minutes - red
+    if (elapsedSeconds >= 900) return 'text-yellow-400 dark:text-yellow-600'; // Over 15 minutes - yellow
+    return 'text-green-400 dark:text-green-600'; // Under 15 minutes - green
   };
 
   return (
     <div 
-      className={`inline-flex items-center px-4 py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm ${className ?? ''}`.trim()} 
+      className={`inline-flex items-center px-4 py-2 bg-slate-900 dark:bg-white border-2 border-slate-700 dark:border-slate-300 rounded-lg shadow-lg ${className ?? ''}`.trim()} 
       role="timer" 
       aria-live="off"
     >
       <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <span className="text-sm font-medium text-slate-300 dark:text-slate-700">
           Time:
         </span>
         <span className={`text-lg font-bold tabular-nums ${getTimerColor()}`}>

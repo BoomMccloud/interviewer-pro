@@ -4,7 +4,6 @@ import React from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import TextInterviewUI from '~/components/Sessions/InterviewUI/TextInterviewUI';
 import VoiceInterviewUI from '~/components/Sessions/InterviewUI/VoiceInterviewUI';
-import Timer from '~/components/UI/Timer';
 
 type InterviewMode = 'text' | 'voice' | 'avatar';
 
@@ -32,7 +31,7 @@ export default function SessionPage() {
     // TODO: Connect to api.interview.getNextQuestion.useMutation()
   };
 
-  const handleSendVoiceInput = (audioBlob: Blob) => {
+  const handleSendVoiceInput = async (audioBlob: Blob) => {
     console.log('Sending voice input:', audioBlob);
     // TODO: Connect to voice processing and then getNextQuestion
   };
@@ -108,11 +107,6 @@ export default function SessionPage() {
 
   return (
     <div className="h-screen bg-white dark:bg-slate-900 flex flex-col">
-      {/* Timer positioned to avoid theme toggle overlap */}
-      <div className="absolute top-20 right-4 z-10">
-        <Timer />
-      </div>
-
       {/* Interview Interface - mode-specific */}
       <div className="flex-1">
         {renderInterviewMode()}
