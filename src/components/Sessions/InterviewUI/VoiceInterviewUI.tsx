@@ -25,11 +25,13 @@ interface VoiceInterviewUIProps {
     isActive: boolean;
     personaId: string;
     currentQuestion: string;
+    keyPoints?: string[];
     conversationHistory: ConversationMessage[];
     questionNumber: number;
     timeRemaining: number;
   };
   currentQuestion: string;
+  keyPoints?: string[];
   isProcessingResponse: boolean;
   onSendVoiceInput: (audioBlob: Blob) => Promise<void>;
   onPause: () => Promise<void>;
@@ -41,6 +43,7 @@ type RecordingState = 'idle' | 'recording' | 'stopped' | 'error';
 export default function VoiceInterviewUI({
   sessionData,
   currentQuestion,
+  keyPoints,
   isProcessingResponse,
   onSendVoiceInput,
   onPause,
@@ -195,9 +198,17 @@ export default function VoiceInterviewUI({
                 <div className="text-sm text-gray-700 dark:text-gray-300">
                   <strong className="text-green-900 dark:text-green-400">Key points:</strong>
                   <ul className="list-disc list-inside mt-1 space-y-1">
-                    <li>Key point 1</li>
-                    <li>Key point 2</li>
-                    <li>Key point 3</li>
+                    {keyPoints && keyPoints.length > 0 ? (
+                      keyPoints.map((point, index) => (
+                        <li key={index}>{point}</li>
+                      ))
+                    ) : (
+                      <>
+                        <li>Focus on your specific role and contributions</li>
+                        <li>Highlight technologies and tools you used</li>
+                        <li>Discuss challenges faced and how you overcame them</li>
+                      </>
+                    )}
                   </ul>
                 </div>
               </div>

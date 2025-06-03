@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '~/trpc/react';
 import type { JdResumeText } from '~/types';
 import Spinner from '~/components/UI/Spinner';
+import { PERSONA_IDS } from '~/types';
 
 interface MvpJdResumeInputFormProps {
   initialJdText?: string;
@@ -100,8 +101,8 @@ export default function MvpJdResumeInputForm({
       return;
     }
     
-    // Use the first available persona from personaService (swe-interviewer-standard)
-    const personaId = 'swe-interviewer-standard';
+    // Use type-safe persona constant
+    const personaId = PERSONA_IDS.HR_RECRUITER_GENERAL;
     createSessionMutation.mutate({ personaId, durationInSeconds: 15 * 60 });
   };
 

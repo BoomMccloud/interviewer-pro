@@ -72,7 +72,7 @@ async function createDevSession() {
     const testSession = await db.sessionData.create({
       data: {
         userId: user.id,
-        personaId: 'swe-interviewer-standard',
+        personaId: 'hr-recruiter-general',
         jdResumeTextId: jdResumeText.id,
         durationInSeconds: 1800,
         history: [],

@@ -8,13 +8,9 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-
-// Real components
 import MvpJdResumeInputForm from '~/components/MvpJdResumeInputForm';
 import MvpSessionHistoryList from '~/components/MvpSessionHistoryList';
 import Spinner from '~/components/UI/Spinner';
-
-// tRPC hooks and types
 import { api } from '~/trpc/react';
 import type { MvpSessionTurn } from '~/types';
 import { zodMvpSessionTurnArray } from '~/types';
@@ -57,87 +53,86 @@ export default function DashboardPage() {
     });
   }, [rawSessionHistory]);
 
-  // Combined loading and error states
-  const isLoading = isLoadingJdResume || isLoadingSessions;
-  const error = jdResumeError ?? sessionsError;
-
-  // Handlers for form interactions
-  const handleSaveSuccess = async () => {
-    // Invalidate and refetch both queries when text is saved
-    await utils.jdResume.getJdResumeText.invalidate();
-    await utils.session.listForCurrentText.invalidate();
-  };
-
-  const handleStartSessionSuccess = () => {
-    // Navigation is handled by the MvpJdResumeInputForm component
-    // We could also invalidate queries here if needed
-  };
-
-  const handleSessionClick = (sessionId: string) => {
-    router.push(`/sessions/${sessionId}/report`);
-  };
-
-  const handleRetry = async () => {
+  const handleJdResumeSaveSuccess = async () => {
     await Promise.all([
       refetchJdResume(),
-      refetchSessions(),
+      refetchSessions()
     ]);
   };
 
+  const handleSessionCreated = () => {
+    void refetchSessions(); // Don't await here as we're navigating away
+  };
+
   // Show loading spinner while data is loading
-  if (isLoading) {
+  if (isLoadingJdResume || isLoadingSessions) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Spinner />
-          <p className="mt-4 text-gray-600">Loading dashboard...</p>
-        </div>
+      <div className="flex justify-center items-center min-h-screen">
+        <Spinner />
       </div>
     );
   }
 
-  // Show error state
-  if (error) {
+  // Show error state if any error occurred
+  if (jdResumeError || sessionsError) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">Error loading dashboard:</p>
-          <p className="text-gray-600 mb-4">{error.message}</p>
-          <button 
-            onClick={handleRetry}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-          >
-            Retry
-          </button>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-red-600">Error Loading Dashboard</h1>
+            <p className="mt-2 text-gray-600">
+              {jdResumeError?.message ?? sessionsError?.message ?? 'An unexpected error occurred'}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Dashboard</h1>
-        
-        {/* Job Description & Resume Input Section */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-6">Job Description & Resume</h2>
-          <MvpJdResumeInputForm
-            initialJdText={jdResumeText?.jdText ?? ''}
-            initialResumeText={jdResumeText?.resumeText ?? ''}
-            onSaveSuccess={handleSaveSuccess}
-            onStartSessionSuccess={handleStartSessionSuccess}
-          />
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 py-12">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+            Interview Practice Dashboard
+          </h1>
+          <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
+            Practice your interview skills with AI-powered mock interviews tailored to your target role.
+          </p>
         </div>
 
-        {/* Session History Section */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-6">Session History</h2>
-          <MvpSessionHistoryList
-            sessions={sessionHistory}
-            onSessionClick={handleSessionClick}
-            isLoading={false} // Loading handled at page level
-          />
+        <div className="space-y-8">
+          {/* JD/Resume Input Section */}
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600 p-8">
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-6">
+              Job Description & Resume
+            </h2>
+            <MvpJdResumeInputForm 
+              initialJdText={jdResumeText?.jdText}
+              initialResumeText={jdResumeText?.resumeText}
+              onSaveSuccess={handleJdResumeSaveSuccess}
+              onStartSessionSuccess={handleSessionCreated}
+            />
+          </div>
+
+          {/* Session History Section */}
+          {jdResumeText && (
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600 p-8">
+              <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-6">
+                Your Interview Sessions
+              </h2>
+              <MvpSessionHistoryList 
+                sessions={sessionHistory}
+                onSessionClick={(sessionId) => router.push(`/sessions/${sessionId}`)}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

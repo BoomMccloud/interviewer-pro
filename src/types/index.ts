@@ -23,9 +23,53 @@ export interface Persona {
   voiceProfileId?: string;
 }
 
+// 🎯 TYPE-SAFE PERSONA CONSTANTS
+// These constants ensure consistency between frontend and backend
+export const PERSONA_IDS = {
+  SWE_INTERVIEWER_STANDARD: 'swe-interviewer-standard',
+  BEHAVIORAL_INTERVIEWER_FRIENDLY: 'behavioral-interviewer-friendly',
+  HR_RECRUITER_GENERAL: 'hr-recruiter-general',
+} as const;
+
+export type PersonaId = typeof PERSONA_IDS[keyof typeof PERSONA_IDS];
+
+// Validation schema for PersonaId
+export const zodPersonaId = z.enum([
+  PERSONA_IDS.SWE_INTERVIEWER_STANDARD,
+  PERSONA_IDS.BEHAVIORAL_INTERVIEWER_FRIENDLY,
+  PERSONA_IDS.HR_RECRUITER_GENERAL,
+]);
+
+// 🎯 SESSION STATE CONSTANTS
+export const SESSION_STATES = {
+  LOADING: 'loading',
+  NEW: 'new', 
+  ACTIVE: 'active',
+  COMPLETED: 'completed',
+  ERROR: 'error',
+} as const;
+
+export type SessionState = typeof SESSION_STATES[keyof typeof SESSION_STATES];
+
+// 🎯 INTERVIEW MODE CONSTANTS
+export const INTERVIEW_MODES = {
+  TEXT: 'text',
+  VOICE: 'voice',
+  AVATAR: 'avatar',
+} as const;
+
+export type InterviewMode = typeof INTERVIEW_MODES[keyof typeof INTERVIEW_MODES];
+
+// Validation schema for InterviewMode
+export const zodInterviewMode = z.enum([
+  INTERVIEW_MODES.TEXT,
+  INTERVIEW_MODES.VOICE,
+  INTERVIEW_MODES.AVATAR,
+]);
+
 // Define specific persona IDs used in MVP (can expand later)
 // This remains useful as SessionData.personaId is just `string` from Prisma
-export type PersonaId = 'technical-lead'; 
+export type PersonaIdLegacy = 'technical-lead';
 
 
 // --- Prisma Model Zod Schemas ---
@@ -52,7 +96,7 @@ export interface MvpSessionTurn {
   timestamp: Date; // When this turn occurred
   
   // Optional type field for special entries like pause, resume, etc.
-  type?: 'pause' | 'resume' | 'end'; // Special turn types for session state management
+  type?: 'pause' | 'resume' | 'end' | 'conversational' | 'topic_transition'; // Special turn types for session state management
 
   // Store the parsed feedback/analysis/alternative directly in the turn data.
   // This simplifies fetching data for the report. Only present for 'model' roles.
@@ -67,7 +111,7 @@ export const zodMvpSessionTurn = z.object({
   text: z.string(),
   rawAiResponseText: z.string().optional(),
   timestamp: z.coerce.date(), // Coerce to Date object from string/number
-  type: z.enum(['pause', 'resume', 'end']).optional(), // Optional type for special turn types
+  type: z.enum(['pause', 'resume', 'end', 'conversational', 'topic_transition']).optional(), // Optional type for special turn types
   analysis: z.string().optional(),
   feedbackPoints: z.array(z.string()).optional(),
   suggestedAlternative: z.string().optional(),
@@ -75,14 +119,28 @@ export const zodMvpSessionTurn = z.object({
 
 export const zodMvpSessionTurnArray = z.array(zodMvpSessionTurn);
 
-// AI Response structure for gemini service
+// Current MVP AI Response (from continueInterview - will be deprecated)
 export interface MvpAiResponse {
-  questionText?: string; // For getFirstQuestion
-  nextQuestion?: string; // For continueInterview
-  analysis?: string;
-  feedbackPoints?: string[];
-  suggestedAlternative?: string;
-  rawAiResponseText?: string;
+  nextQuestion: string;
+  keyPoints: string[];
+  analysis: string;
+  feedbackPoints: string[];
+  suggestedAlternative: string;
+}
+
+// NEW: Conversational Response (for continueConversation function)
+export interface ConversationalResponse {
+  analysis: string;
+  feedbackPoints: string[];
+  followUpQuestion: string;
+  rawAiResponseText: string;
+}
+
+// NEW: Topical Question Response (for getNewTopicalQuestion function)  
+export interface TopicalQuestionResponse {
+  questionText: string;
+  keyPoints: string[];
+  rawAiResponseText: string;
 }
 
 // Define Zod schema for SessionData
@@ -364,3 +422,42 @@ export const zodUpdateSessionStateRequest = z.object({
 export const zodGetActiveSessionRequest = z.object({
   sessionId: z.string(),
 });
+
+// ===================================================================
+// Question Generation API Types
+// ===================================================================
+
+// Question type categories for different stages of interview
+export type QuestionType = 'opening' | 'technical' | 'behavioral' | 'followup';
+
+// Response from generateInterviewQuestion API
+export interface GeneratedQuestion {
+  question: string;
+  keyPoints: string[];
+  questionType: QuestionType;
+  personaId: string;
+  metadata: {
+    difficulty: 'easy' | 'medium' | 'hard';
+    estimatedResponseTime: number; // in seconds
+    tags: string[]; // categorization tags
+  };
+  rawAiResponse: string; // For session storage if needed
+}
+
+// Zod schema for validation
+export const zodQuestionType = z.enum(['opening', 'technical', 'behavioral', 'followup']);
+
+export const zodGeneratedQuestion = z.object({
+  question: z.string(),
+  keyPoints: z.array(z.string()),
+  questionType: zodQuestionType,
+  personaId: z.string(),
+  metadata: z.object({
+    difficulty: z.enum(['easy', 'medium', 'hard']),
+    estimatedResponseTime: z.number(),
+    tags: z.array(z.string()),
+  }),
+  rawAiResponse: z.string(),
+});
+
+// ===================================================================

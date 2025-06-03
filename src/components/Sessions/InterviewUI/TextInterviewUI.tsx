@@ -14,109 +14,100 @@ import React, { useState, useRef, useEffect } from 'react';
 import Timer from '~/components/UI/Timer';
 
 interface ConversationMessage {
-  role: 'ai' | 'user';
-  content: string;
-  timestamp: string;
-  isNew?: boolean;
+  role: 'user' | 'model';
+  text: string;
+  timestamp: Date;
 }
 
 interface TextInterviewUIProps {
   sessionData: {
     sessionId: string;
-    isActive: boolean;
-    personaId: string;
+    history: ConversationMessage[];
     currentQuestion: string;
-    conversationHistory: ConversationMessage[];
-    questionNumber: number;
-    timeRemaining: number;
+    keyPoints: string[];
+    status: 'active' | 'paused' | 'completed';
+    startTime: Date;
   };
-  currentQuestion: string;
-  isProcessingResponse: boolean;
-  onSendMessage: (message: string) => Promise<void>;
-  onPause: () => Promise<void>;
-  onEnd: () => Promise<void>;
+  userInput: string;
+  setUserInput: (input: string) => void;
+  onSubmitResponse: (response: string) => Promise<void>;
+  isLoading: boolean;
+  onGetNextTopic?: () => Promise<void>;
+  isGettingNextTopic?: boolean;
+  onSave?: () => Promise<void>;
+  onEnd?: () => Promise<void>;
+  isSaving?: boolean;
+  isEnding?: boolean;
 }
 
-export default function TextInterviewUI({
-  sessionData,
-  currentQuestion,
-  isProcessingResponse,
-  onSendMessage,
-  onPause,
+export default function TextInterviewUI({ 
+  sessionData, 
+  userInput, 
+  setUserInput, 
+  onSubmitResponse, 
+  isLoading,
+  onGetNextTopic,
+  isGettingNextTopic = false,
+  onSave,
   onEnd,
+  isSaving,
+  isEnding
 }: TextInterviewUIProps) {
-  const [userInput, setUserInput] = useState('');
-  const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
+  const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Initialize conversation history from sessionData
-  useEffect(() => {
-    if (sessionData?.conversationHistory) {
-      setConversationHistory(sessionData.conversationHistory.map(msg => ({
-        ...msg,
-        isNew: false,
-      })));
-    }
-  }, [sessionData]);
+  const [conversation, setConversation] = useState<ConversationMessage[]>(sessionData.history || []);
 
-  // Auto-scroll to bottom of chat
+  // Update conversation when sessionData changes
+  useEffect(() => {
+    if (sessionData.history) {
+      setConversation(sessionData.history);
+    }
+  }, [sessionData.history]);
+
+  // Auto-scroll chat to bottom
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
-  }, [conversationHistory]);
+  }, [conversation]);
 
   // Auto-resize textarea
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, [userInput]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userInput.trim() || isProcessingResponse) return;
+    if (!userInput.trim() || isLoading) return;
 
     const messageText = userInput.trim();
     
     // Add user message to local history immediately for responsive UI
     const userMessage: ConversationMessage = {
       role: 'user',
-      content: messageText,
-      timestamp: new Date().toISOString(),
-      isNew: true,
+      text: messageText,
+      timestamp: new Date(),
     };
     
-    setConversationHistory(prev => [...prev, userMessage]);
+    setConversation(prev => [...prev, userMessage]);
     setUserInput('');
 
     try {
-      await onSendMessage(messageText);
+      await onSubmitResponse(messageText);
       
-      // Add AI response to local history (currentQuestion is updated by parent)
-      setTimeout(() => {
-        const aiMessage: ConversationMessage = {
-          role: 'ai',
-          content: currentQuestion,
-          timestamp: new Date().toISOString(),
-          isNew: true,
-        };
-        setConversationHistory(prev => [...prev, aiMessage]);
-      }, 500); // Small delay to show processing state
+      // The onSubmitResponse handler will trigger a session refetch which will
+      // update the conversation history with the AI response automatically
       
     } catch (error) {
       // Handle error - could show error message in UI
       console.error('Failed to send message:', error);
     }
-  };
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -134,7 +125,7 @@ export default function TextInterviewUI({
             </div>
             
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white leading-relaxed mb-4 p-4 bg-gray-50/30 dark:bg-slate-800/30 rounded-lg">
-              {currentQuestion || 'Loading next question...'}
+              {sessionData.currentQuestion || 'Loading next question...'}
             </h2>
             
             {/* AI Guidance Hints */}
@@ -146,9 +137,17 @@ export default function TextInterviewUI({
                 <div className="text-sm text-gray-700 dark:text-gray-300">
                   <strong className="text-blue-900 dark:text-blue-400">Key points:</strong>
                   <ul className="list-disc list-inside mt-1 space-y-1">
-                    <li>Key point 1</li>
-                    <li>Key point 2</li>
-                    <li>Key point 3</li>
+                    {sessionData.keyPoints && sessionData.keyPoints.length > 0 ? (
+                      sessionData.keyPoints.map((point, index) => (
+                        <li key={index}>{point}</li>
+                      ))
+                    ) : (
+                      <>
+                        <li>Focus on your specific role and contributions</li>
+                        <li>Highlight technologies and tools you used</li>
+                        <li>Discuss challenges faced and how you overcame them</li>
+                      </>
+                    )}
                   </ul>
                 </div>
               </div>
@@ -168,7 +167,7 @@ export default function TextInterviewUI({
         className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/30 dark:bg-slate-800/30"
         style={{ minHeight: '200px' }}
       >
-        {conversationHistory.length === 0 ? (
+        {conversation.length === 0 ? (
           <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
             <div className="text-center">
               <div className="text-lg mb-2">🎯</div>
@@ -178,7 +177,7 @@ export default function TextInterviewUI({
           </div>
         ) : (
           <div className="w-full space-y-4">
-            {conversationHistory.map((message, index) => (
+            {conversation.map((message, index) => (
               <div
                 key={index}
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -188,17 +187,17 @@ export default function TextInterviewUI({
                     message.role === 'user'
                       ? 'bg-blue-600 dark:bg-blue-500 text-white'
                       : 'bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white'
-                  } ${message.isNew ? 'animate-fade-in' : ''}`}
+                  }`}
                 >
                   <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {message.content}
+                    {message.text}
                   </div>
                 </div>
               </div>
             ))}
             
             {/* Processing indicator */}
-            {isProcessingResponse && (
+            {isLoading && (
               <div className="flex justify-start">
                 <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-gray-600 rounded-lg px-4 py-3 max-w-[75%]">
                   <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
@@ -234,17 +233,17 @@ export default function TextInterviewUI({
                   }}
                   placeholder="Type your response here... (Press Ctrl+Enter to send)"
                   className="w-full min-h-[60px] max-h-[120px] p-3 text-gray-900 dark:text-white bg-gray-50 dark:bg-slate-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent resize-none"
-                  disabled={isProcessingResponse}
+                  disabled={isLoading}
                   rows={2}
                 />
               </div>
               <div className="flex">
                 <button
                   type="submit"
-                  disabled={!userInput.trim() || isProcessingResponse}
+                  disabled={!userInput.trim() || isLoading}
                   className="h-full px-6 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center"
                 >
-                  {isProcessingResponse ? 'Sending...' : 'Send'}
+                  {isLoading ? 'Sending...' : 'Send'}
                 </button>
               </div>
             </div>
@@ -255,19 +254,52 @@ export default function TextInterviewUI({
                 Press Ctrl+Enter to send • Use clear and specific examples in your responses
               </div>
               <div className="flex gap-3">
+                {/* 🔗 NEW: Next Question button for user-controlled topic transitions */}
+                {onGetNextTopic && (
+                  <button
+                    type="button"
+                    onClick={onGetNextTopic}
+                    disabled={isGettingNextTopic}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isGettingNextTopic ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Getting Next Question...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                        </svg>
+                        Next Question
+                      </>
+                    )}
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={onPause}
-                  className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                  className={`px-4 py-2 text-sm border rounded-lg transition-colors ${
+                    !onSave || isSaving 
+                      ? 'text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed opacity-50' 
+                      : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-800'
+                  }`}
+                  onClick={onSave}
+                  disabled={!onSave || isSaving}
                 >
-                  Pause
+                  {isSaving ? 'Saving...' : 'Save'}
                 </button>
                 <button
                   type="button"
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    !onEnd || isEnding
+                      ? 'text-red-300 dark:text-red-500 cursor-not-allowed opacity-50'
+                      : 'text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20'
+                  }`}
                   onClick={onEnd}
-                  className="px-4 py-2 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                  disabled={!onEnd || isEnding}
                 >
-                  End Interview
+                  {isEnding ? 'Ending...' : 'End Interview'}
                 </button>
               </div>
             </div>

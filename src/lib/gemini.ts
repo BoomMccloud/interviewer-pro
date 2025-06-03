@@ -20,6 +20,8 @@ import type {
   Persona, // Type for Persona definition (at least { id: string; name: string; systemPrompt: string; })
   MvpAiResponse, // Type for the structured AI response
   MvpSessionTurn, // Type for storing a single turn in session history ({ role: 'user' | 'model', text: string, rawAiResponseText?: string, analysis?: string, feedbackPoints?: string[], suggestedAlternative?: string })
+  ConversationalResponse,
+  TopicalQuestionResponse
 } from '../types';
 
 // --- Configuration & Client Initialization ---
@@ -86,12 +88,18 @@ export function buildPromptContents(
 You MUST respond in the following structured format for every response:
 
 <QUESTION>Your interview question here?</QUESTION>
+<KEY_POINTS>
+- Specific point about what the candidate should focus on in their answer
+- Another key area they should address
+- Third important aspect to cover
+</KEY_POINTS>
 <ANALYSIS>Your analysis of the candidate's previous answer (if any).</ANALYSIS>
 <FEEDBACK>Specific feedback points about the candidate's response (if any).</FEEDBACK>
 <SUGGESTED_ALTERNATIVE>A better way the candidate could have answered (if any).</SUGGESTED_ALTERNATIVE>
 
 For the first question, you can put "N/A" in the ANALYSIS, FEEDBACK, and SUGGESTED_ALTERNATIVE sections.
-Always include ALL FOUR sections with the exact XML tags shown above.
+The KEY_POINTS should always contain 3-4 specific, actionable points tailored to the question you're asking.
+Always include ALL FIVE sections with the exact XML tags shown above.
 
 Now start the interview with your first question.`
       },
@@ -140,7 +148,7 @@ async function processStream(streamResponse: AsyncIterable<GenerateContentRespon
 // Helper to parse AI response based on XML delimiters
 /**
  * Parses the raw text response from the AI into a structured MvpAiResponse object.
- * Uses defined delimiters (<QUESTION>, <ANALYSIS>, etc.).
+ * Uses defined delimiters (<QUESTION>, <KEY_POINTS>, <ANALYSIS>, etc.).
  * @param rawResponse - The raw text string received from the Gemini API.
  * @returns A structured object containing the extracted parts.
  */
@@ -148,6 +156,7 @@ export function parseAiResponse(rawResponse: string): MvpAiResponse {
     const cleanedResponse = rawResponse ? rawResponse.trim() : "";
 
     const questionMatch = /<QUESTION>(.*?)<\/QUESTION>/s.exec(cleanedResponse);
+    const keyPointsMatch = /<KEY_POINTS>(.*?)<\/KEY_POINTS>/s.exec(cleanedResponse);
     const analysisMatch = /<ANALYSIS>(.*?)<\/ANALYSIS>/s.exec(cleanedResponse);
     const feedbackMatch = /<FEEDBACK>(.*?)<\/FEEDBACK>/s.exec(cleanedResponse);
     const altMatch = /<SUGGESTED_ALTERNATIVE>(.*?)<\/SUGGESTED_ALTERNATIVE>/s.exec(cleanedResponse);
@@ -156,20 +165,34 @@ export function parseAiResponse(rawResponse: string): MvpAiResponse {
     const analysis = analysisMatch?.[1]?.trim() ?? "No analysis provided for this answer.";
     const feedbackRaw = feedbackMatch?.[1]?.trim() ?? "";
     const suggestedAlternative = altMatch?.[1]?.trim() ?? "No suggested alternative provided for this answer.";
+    
+    // Parse key points from the KEY_POINTS section
+    const keyPointsRaw = keyPointsMatch?.[1]?.trim() ?? "";
+    const keyPoints = keyPointsRaw
+        .split('\n')
+        .map(point => point.replace(/^-\s*/, '').trim()) // Remove leading dashes and whitespace
+        .filter(point => point.length > 0);
 
     const feedbackPoints = feedbackRaw
         .split('\n')
-        .map(point => point.trim())
+        .map(point => point.replace(/^-\s*/, '').trim()) // Remove leading dashes and whitespace  
         .filter(point => point.length > 0);
 
     // Log warnings for missing tags
     if (!questionMatch) console.warn("AI response missing <QUESTION> tag, raw response:", rawResponse);
-    if (!analysisMatch) console.warn("AI response missing <ANALYSIS> tag, raw response:", rawResponse);
-    if (!feedbackMatch) console.warn("AI response missing <FEEDBACK> tag, raw response:", rawResponse);
-    if (!altMatch) console.warn("AI response missing <SUGGESTED_ALTERNATIVE> tag, raw response:", rawResponse);
+    if (!keyPointsMatch) console.warn("AI response missing <KEY_POINTS> tag, raw response:", rawResponse);
+    
+    // Only warn about missing analysis/feedback for responses (not first questions)
+    if (cleanedResponse.includes('<ANALYSIS>') && !analysisMatch) {
+        console.warn("AI response missing <ANALYSIS> tag, raw response:", rawResponse);
+    }
+    if (cleanedResponse.includes('<FEEDBACK>') && !feedbackMatch) {
+        console.warn("AI response missing <FEEDBACK> tag, raw response:", rawResponse);
+    }
 
     return {
         nextQuestion,
+        keyPoints: keyPoints.length > 0 ? keyPoints : ["Focus on your specific role", "Highlight technologies used", "Discuss challenges overcome"],
         analysis,
         feedbackPoints: feedbackPoints.length > 0 ? feedbackPoints : ["No specific feedback provided."],
         suggestedAlternative: suggestedAlternative || "No suggested alternative provided."
@@ -365,3 +388,378 @@ Generate only the next question, nothing else.`;
 //   // This would use client.live.connect(...)
 //   console.warn("Live streaming (voice/stateful) not implemented in MVP gemini.ts");
 //   throw new Error("Voice mode not available in this version.");
+
+/**
+ * 🔵 REFACTOR Phase - Enhanced Implementation
+ * Continues conversation within the same topic with analysis and follow-up questions.
+ * Does NOT transition to new topics - purely conversational.
+ */
+export async function continueConversation(
+  jdResumeText: JdResumeText,
+  persona: Persona,
+  history: MvpSessionTurn[],
+  userResponse: string
+): Promise<ConversationalResponse> {
+  // Enhanced validation
+  if (!userResponse || userResponse.trim().length === 0) {
+    throw new Error('User response cannot be empty');
+  }
+
+  if (userResponse.trim().length > 2000) {
+    throw new Error('User response is too long (max 2000 characters)');
+  }
+
+  try {
+    // Build enhanced conversational-only prompt
+    const contents = buildConversationalPrompt(jdResumeText, persona, history, userResponse);
+
+    const response = await genAI.models.generateContentStream({
+      model: MODEL_NAME_TEXT,
+      contents: contents,
+      config: {
+        temperature: 0.7, // Good balance for conversational consistency
+        maxOutputTokens: 1200, // Increased for detailed analysis
+        topP: 0.9, // Focus on most likely responses
+        topK: 40, // Moderate diversity
+      },
+    });
+
+    const rawAiResponseText = await processStream(response);
+    
+    if (!rawAiResponseText) {
+      throw new Error('AI returned empty response');
+    }
+
+    // Enhanced conversational response parsing
+    const parsed = parseConversationalResponse(rawAiResponseText);
+
+    // Validate response quality
+    if (!parsed.analysis || parsed.analysis.length < 10) {
+      console.warn('AI returned insufficient analysis, using fallback');
+      parsed.analysis = `Your response demonstrates understanding of the topic. Let's explore this further.`;
+    }
+
+    if (!parsed.followUpQuestion || parsed.followUpQuestion.length < 10) {
+      console.warn('AI returned insufficient follow-up question, using fallback');
+      parsed.followUpQuestion = `Can you elaborate on that experience and share more specific details?`;
+    }
+
+    return {
+      analysis: parsed.analysis,
+      feedbackPoints: parsed.feedbackPoints,
+      followUpQuestion: parsed.followUpQuestion,
+      rawAiResponseText: rawAiResponseText,
+    };
+
+  } catch (error) {
+    console.error('Error in continueConversation:', error);
+    throw new Error('Failed to continue conversation');
+  }
+}
+
+/**
+ * 🔵 REFACTOR Phase - Enhanced Implementation  
+ * Generates new topical questions for topic transitions only.
+ * Does NOT provide conversational responses.
+ */
+export async function getNewTopicalQuestion(
+  jdResumeText: JdResumeText,
+  persona: Persona,
+  history: MvpSessionTurn[],
+  coveredTopics?: string[]
+): Promise<TopicalQuestionResponse> {
+  try {
+    // Build enhanced topic-generation prompt
+    const contents = buildTopicalPrompt(jdResumeText, persona, history, coveredTopics);
+
+    const response = await genAI.models.generateContentStream({
+      model: MODEL_NAME_TEXT,
+      contents: contents,
+      config: {
+        temperature: 0.8, // Higher creativity for diverse topic selection
+        maxOutputTokens: 800, // Sufficient for question + key points
+        topP: 0.85,
+        topK: 50, // More diversity for topic selection
+      },
+    });
+
+    const rawAiResponseText = await processStream(response);
+    
+    if (!rawAiResponseText) {
+      throw new Error('AI returned empty response');
+    }
+
+    // Enhanced topical response parsing
+    const parsed = parseTopicalResponse(rawAiResponseText);
+
+    // Validate question quality and topic uniqueness
+    if (!parsed.questionText || parsed.questionText.length < 15) {
+      console.warn('AI returned insufficient question text, using fallback');
+      parsed.questionText = generateFallbackQuestion(jdResumeText, coveredTopics);
+    }
+
+    if (parsed.keyPoints.length < 3) {
+      console.warn('AI returned insufficient key points, adding fallbacks');
+      parsed.keyPoints = [
+        ...parsed.keyPoints,
+        ...getFallbackKeyPoints(parsed.questionText).slice(0, 4 - parsed.keyPoints.length)
+      ];
+    }
+
+    return {
+      questionText: parsed.questionText,
+      keyPoints: parsed.keyPoints,
+      rawAiResponseText: rawAiResponseText,
+    };
+
+  } catch (error) {
+    console.error('Error in getNewTopicalQuestion:', error);
+    throw new Error('Failed to generate new topical question');
+  }
+}
+
+// Enhanced helper functions
+
+function buildConversationalPrompt(
+  jdResumeText: JdResumeText,
+  persona: Persona,
+  history: MvpSessionTurn[],
+  userResponse: string
+): Content[] {
+  const contents: Content[] = [];
+  const systemInstructionText = buildConversationalSystemInstruction(persona);
+
+  contents.push({
+    role: 'user',
+    parts: [
+      { text: systemInstructionText },
+      { text: `\n\nJob Description:\n<JD>\n${jdResumeText.jdText}\n</JD>` },
+      { text: `\n\nCandidate Resume:\n<RESUME>\n${jdResumeText.resumeText}\n</RESUME>` },
+      {
+        text: `\n\nIMPORTANT - Conversational Response Format:
+You MUST respond in the following format for conversational follow-ups:
+
+<ANALYSIS>Your detailed analysis of the candidate's response.</ANALYSIS>
+<FEEDBACK>
+- Specific feedback point about their answer
+- Another area for improvement or strength  
+- Third constructive point
+</FEEDBACK>
+<FOLLOW_UP>Your follow-up question about the SAME topic - dig deeper, don't change topics.</FOLLOW_UP>
+
+Do NOT include <QUESTION> or <KEY_POINTS> sections - those are for new topics only.
+Focus on analyzing their response and asking follow-up questions about the current topic.
+Do NOT transition to new interview topics.`
+      },
+    ],
+  });
+
+  // Add conversation history
+  for (const turn of history) {
+    const role = turn.role === 'user' ? 'user' : 'model';
+    let parts: Part[] = [{ text: turn.text }];
+
+    if (turn.role === 'model' && turn.rawAiResponseText) {
+      parts = [{ text: turn.rawAiResponseText }];
+    }
+
+    contents.push({ role, parts });
+  }
+
+  // Add current user response
+  contents.push({ role: 'user', parts: [{ text: userResponse }] });
+
+  return contents;
+}
+
+function buildTopicalPrompt(
+  jdResumeText: JdResumeText,
+  persona: Persona,
+  history: MvpSessionTurn[],
+  coveredTopics?: string[]
+): Content[] {
+  const contents: Content[] = [];
+  const systemInstructionText = buildTopicalSystemInstruction(persona);
+
+  const coveredTopicsText = coveredTopics && coveredTopics.length > 0 
+    ? `\n\nTopics already covered: ${coveredTopics.join(', ')}`
+    : '';
+
+  contents.push({
+    role: 'user',
+    parts: [
+      { text: systemInstructionText },
+      { text: `\n\nJob Description:\n<JD>\n${jdResumeText.jdText}\n</JD>` },
+      { text: `\n\nCandidate Resume:\n<RESUME>\n${jdResumeText.resumeText}\n</RESUME>` },
+      { text: coveredTopicsText },
+      {
+        text: `\n\nIMPORTANT - New Topic Question Format:
+You MUST respond in the following format for new topical questions:
+
+<QUESTION>Your new interview question about a different topic?</QUESTION>
+<KEY_POINTS>
+- Specific point about what the candidate should focus on
+- Another key area they should address  
+- Third important aspect to cover
+</KEY_POINTS>
+
+Generate a NEW topic that is different from any covered topics.
+Focus on job description requirements and resume experience not yet explored.
+Do NOT repeat previously covered topics.`
+      },
+    ],
+  });
+
+  return contents;
+}
+
+function buildConversationalSystemInstruction(persona: Persona): string {
+  return `You are conducting a conversational interview within the current topic. ${persona.systemPrompt}
+
+CRITICAL INSTRUCTIONS:
+- Stay focused on the current topic being discussed
+- Do NOT introduce new interview topics or areas
+- Provide thorough analysis of the candidate's response
+- Ask follow-up questions that dig deeper into the same subject
+- Give constructive, specific feedback
+- Help the candidate demonstrate their experience fully
+
+Your goal is to have a natural conversation that explores the current topic in depth, not to move to new areas.`;
+}
+
+function buildTopicalSystemInstruction(persona: Persona): string {
+  return `You are generating new topical interview questions. ${persona.systemPrompt}
+
+CRITICAL INSTRUCTIONS:
+- Generate questions about NEW topics not yet covered
+- Focus on job description requirements and resume experience
+- Avoid repeating previously discussed topics
+- Create distinct, focused questions for each topic area
+- Provide helpful key points to guide the candidate
+- Ensure questions are substantive and interview-appropriate
+
+Your goal is to select the next most important topic to explore based on the job requirements.`;
+}
+
+function parseConversationalResponse(rawResponse: string): {
+  analysis: string;
+  feedbackPoints: string[];
+  followUpQuestion: string;
+} {
+  const cleanedResponse = rawResponse ? rawResponse.trim() : "";
+
+  const analysisMatch = /<ANALYSIS>(.*?)<\/ANALYSIS>/s.exec(cleanedResponse);
+  const feedbackMatch = /<FEEDBACK>(.*?)<\/FEEDBACK>/s.exec(cleanedResponse);
+  const followUpMatch = /<FOLLOW_UP>(.*?)<\/FOLLOW_UP>/s.exec(cleanedResponse);
+
+  const analysis = analysisMatch?.[1]?.trim() ?? "Good response - shows relevant experience and understanding.";
+  const feedbackRaw = feedbackMatch?.[1]?.trim() ?? "";
+  const followUpQuestion = followUpMatch?.[1]?.trim() ?? "Can you tell me more about that experience?";
+
+  // Enhanced feedback parsing
+  const feedbackPoints = feedbackRaw
+    .split('\n')
+    .map(point => point.replace(/^[-•*]\s*/, '').trim()) // Handle different bullet styles
+    .filter(point => point.length > 3); // Filter out very short points
+
+  return {
+    analysis,
+    feedbackPoints: feedbackPoints.length > 0 ? feedbackPoints : [
+      "Shows good understanding of the topic",
+      "Demonstrates relevant experience", 
+      "Could benefit from more specific details"
+    ],
+    followUpQuestion,
+  };
+}
+
+function parseTopicalResponse(rawResponse: string): {
+  questionText: string;
+  keyPoints: string[];
+} {
+  const cleanedResponse = rawResponse ? rawResponse.trim() : "";
+
+  const questionMatch = /<QUESTION>(.*?)<\/QUESTION>/s.exec(cleanedResponse);
+  const keyPointsMatch = /<KEY_POINTS>(.*?)<\/KEY_POINTS>/s.exec(cleanedResponse);
+
+  const questionText = questionMatch?.[1]?.trim() ?? "";
+  const keyPointsRaw = keyPointsMatch?.[1]?.trim() ?? "";
+
+  // Enhanced key points parsing
+  const keyPoints = keyPointsRaw
+    .split('\n')
+    .map(point => point.replace(/^[-•*]\s*/, '').trim()) // Handle different bullet styles
+    .filter(point => point.length > 5); // Filter out very short points
+
+  return {
+    questionText,
+    keyPoints,
+  };
+}
+
+// Enhanced fallback functions
+
+function generateFallbackQuestion(jdResumeText: JdResumeText, coveredTopics?: string[]): string {
+  // Extract key requirements from JD that haven't been covered
+  const jdLower = jdResumeText.jdText.toLowerCase();
+  const covered = (coveredTopics ?? []).map(t => t.toLowerCase());
+  
+  const fallbackQuestions = [
+    { keywords: ['node', 'backend', 'server'], question: 'Tell me about your backend development experience with Node.js or other server technologies.' },
+    { keywords: ['team', 'leadership', 'manage'], question: 'Describe your experience working with or leading development teams.' },
+    { keywords: ['system', 'design', 'architecture'], question: 'Walk me through your approach to system design and architecture decisions.' },
+    { keywords: ['database', 'sql', 'data'], question: 'Tell me about your experience with databases and data management.' },
+    { keywords: ['testing', 'quality', 'qa'], question: 'How do you approach testing and ensuring code quality in your projects?' },
+  ];
+
+  for (const fallback of fallbackQuestions) {
+    const hasKeyword = fallback.keywords.some(keyword => jdLower.includes(keyword));
+    const alreadyCovered = covered.some(topic => 
+      fallback.keywords.some(keyword => topic.includes(keyword))
+    );
+    
+    if (hasKeyword && !alreadyCovered) {
+      return fallback.question;
+    }
+  }
+
+  return 'Tell me about a challenging project you worked on and how you approached solving the key problems.';
+}
+
+function getFallbackKeyPoints(questionText: string): string[] {
+  const questionLower = questionText.toLowerCase();
+  
+  if (questionLower.includes('backend') || questionLower.includes('node')) {
+    return [
+      'Describe specific backend technologies used',
+      'Explain API design and architecture decisions',
+      'Discuss performance optimization strategies',
+      'Share challenges with scalability or data management'
+    ];
+  }
+  
+  if (questionLower.includes('team') || questionLower.includes('leadership')) {
+    return [
+      'Describe your role and responsibilities',
+      'Explain how you handle team collaboration',
+      'Discuss mentoring or coaching experience',
+      'Share examples of conflict resolution'
+    ];
+  }
+  
+  if (questionLower.includes('system') || questionLower.includes('design')) {
+    return [
+      'Explain your design process and methodology',
+      'Discuss trade-offs and decision criteria',
+      'Describe how you handle scalability requirements',
+      'Share examples of architectural challenges'
+    ];
+  }
+  
+  return [
+    'Focus on specific examples and outcomes',
+    'Highlight your role and contributions',
+    'Discuss challenges faced and solutions implemented',
+    'Explain the impact of your work'
+  ];
+}

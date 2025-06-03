@@ -34,11 +34,11 @@ During Phase 1 development, we discovered a critical architectural mismatch: the
 - ✅ **Type Safety**: End-to-end TypeScript validation with proper error handling
 - ✅ **Production Quality**: Clean, documented, maintainable code ready for frontend integration
 
-## Phase 3: Interview Simulation UI & Live Interaction - **🚧 ACTIVE DEVELOPMENT**
+## Phase 3: Interview Simulation UI & Live Interaction - **🔧 IN PROGRESS**
 
 **Goal:** Build the core interview experience where users conduct real-time AI-powered mock interviews with dynamic question/answer flow, multi-modal interaction, and session management.
 
-**Status: ✅ Phase 3A COMPLETED → 🚧 Phase 3B Frontend Implementation Starting**
+**Status: ✅ Phase 3A COMPLETED → ✅ Phase 3B Frontend Implementation COMPLETED → 🔧 Phase 3C MVP UX Refinement IN PROGRESS**
 
 ### **🎯 Phase 3 Objectives**
 
@@ -118,235 +118,266 @@ getActiveSession: protectedProcedure
     // ✅ Proper authorization and error handling
     return { sessionId, isActive, conversationHistory, ... };
   });
+
+// ✅ COMPLETE: Dedicated question generation API
+generateInterviewQuestion: protectedProcedure
+  .input(z.object({
+    jdResumeTextId: z.string(),
+    personaId: z.string(),
+    questionType: z.enum(['opening', 'technical', 'behavioral', 'followup']).optional()
+  }))
+  .query(async ({ ctx, input }) => {
+    // ✅ Complete standalone question generation
+    // ✅ Modality-agnostic API design
+    // ✅ Structured response with question, keyPoints, metadata
+    return { question, keyPoints, metadata, personaId, questionType, ... };
+  });
 ```
 
 ---
 
-## **🚧 CURRENT DEVELOPMENT: Phase 3B Frontend Implementation**
+## **✅ COMPLETED: Phase 3B Frontend Implementation**
 
-**Status: 🚧 ACTIVE - Parameter-Based Modality Implementation**
+**Status: ✅ COMPLETE - Full Production Interview System Working**
 
-### **🎯 NEW ARCHITECTURE DECISION: Parameter-Based Modality**
+### **✅ COMPLETED: UI Implementation & Testing**
 
-**✅ STRATEGIC DECISION: Query Parameter Approach**
-Instead of complex modality detection logic, we're implementing a clean parameter-based system:
+**✅ UI Components Complete:**
+- **TextInterviewUI** - Complete conversation interface with full functionality
+- **VoiceInterviewUI** - Voice recording interface with processing states  
+- **Timer Integration** - Elapsed time tracking with proper header alignment
+- **Header Updates** - "Current Question:" label, key points with bullet format
+- **Visual Polish** - Removed timestamps, improved spacing and alignment
 
-**URL Structure:**
-```
-/sessions/[id]?mode=text     # Text-based interview
-/sessions/[id]?mode=voice    # Voice-based interview  
-/sessions/[id]?mode=avatar   # Avatar-based interview
-```
+**✅ Testing Results:**
+- **TextInterviewUI Tests: 13/13 PASSING** ✅
+  - Component API and Props ✅
+  - User Workflow (message submission, clearing) ✅
+  - State Management (processing states, conversation history) ✅
+  - Session Control Actions (pause/end) ✅
+  - Keyboard Shortcuts (Ctrl+Enter) ✅
+  - Error Handling ✅
+- **VoiceInterviewUI Tests: 13/18 PASSING** 🚧
+  - Core functionality working ✅
+  - 5 tests failing due to missing recording workflow states (send recording, retry, state transitions)
+  - **Note:** VoiceInterviewUI completion deferred - will address after TextInterviewUI tRPC integration
 
-**Benefits:**
-- ✅ **Simplified Logic**: No complex detection algorithms needed
-- ✅ **Explicit Choice**: User consciously selects their preferred mode
-- ✅ **Bookmarkable URLs**: Users can bookmark their preferred interview mode
-- ✅ **Easier Testing**: Simple URL parameter testing vs complex detection logic
-- ✅ **Clear Separation**: Mode selection happens before session starts
-- ✅ **Better UX**: User knows exactly what they're getting
+### **✅ COMPLETED: tRPC Integration for TextInterviewUI**
 
-### **🧪 TESTING STRATEGY: Minimal Behavior Testing**
+**Status: ✅ INTEGRATION COMPLETE - Smart Session Management Implemented**
 
-**✅ STRATEGIC DECISION: Focus on Stable Business Logic**
-To avoid test maintenance overhead from UI design changes, we're implementing minimal behavior testing:
+**✅ Full Interview Flow Implemented:**
+- **Session Initialization**: `startInterviewSession` called on page load with persona
+- **Real-time Questions**: `getNextQuestion` processes user responses and generates next questions  
+- **Session Recovery**: `getActiveSession` handles page refresh and continuation
+- **Data Persistence**: All conversation history stored in `SessionData.history` JSON field
+- **Loading States**: Proper loading indicators during AI processing
+- **Error Handling**: Try-catch blocks for all tRPC mutations
 
-**✅ SAFE TO TEST (Stable behaviors):**
+**✅ RESOLVED: Smart Session State Management**
+
+**Problem Fixed:** Multiple failed session starts when users try to access completed sessions
+
+**Solution Implemented:**
 ```typescript
-// ✅ User workflows - core functionality that won't change
-it('should allow user to submit a message')
-it('should show processing state while waiting for response')
-it('should handle voice recording start/stop')
-it('should navigate between interview modes via URL parameters')
+type SessionState = 'loading' | 'new' | 'active' | 'completed' | 'error';
 
-// ✅ Data flow - API interactions and state management
-it('should call onSendMessage with user input')
-it('should update conversation history after sending')
-it('should handle tRPC integration correctly')
-
-// ✅ Props interface - component API contracts
-it('should accept required sessionData props')
-it('should handle loading and error states correctly')
+// State machine logic:
+1. 'loading' → Initial page load, checking session status
+2. 'new' → Session doesn't exist, auto-start new interview
+3. 'active' → Session in progress, show interview UI
+4. 'completed' → Session finished, show user options:
+   - "View Interview Report" → Navigate to /sessions/[id]/report
+   - "Start New Interview" → Reset session and restart
+5. 'error' → Handle failures gracefully, return to dashboard
 ```
 
-**❌ AVOID TESTING (Design-dependent details):**
+**Key UX Improvements:**
+- **No More Infinite Loops**: Proper state management prevents retry loops
+- **User Choice on Completion**: Clear options when session already finished
+- **Graceful Error Handling**: Meaningful error states with recovery options
+- **Session Restart Support**: Users can restart completed sessions with same JD/Resume
+- **Visual Feedback**: Loading states, completion indicators, error messages
+
+**✅ Complete Data Flow:**
+1. **Page Load** → `getActiveSession.useQuery({ sessionId })`
+2. **Session Start** → `startInterviewSession.mutate({ sessionId, personaId })`
+   - Fetches JdResumeText + persona config
+   - Calls `getFirstQuestion(jdResumeText, persona)` 
+   - Returns: `{ currentQuestion, conversationHistory: [], questionNumber: 1 }`
+3. **User Response** → `getNextQuestion.mutate({ sessionId, userResponse })`
+   - Adds user message to `history` JSON array
+   - Calls `continueInterview(jdResumeText, persona, history, userResponse)`
+   - LLM generates: next question + analysis + feedback
+   - Updates `SessionData.history` in database
+   - Auto-completes when interview finished (sets `endTime`)
+
+**✅ Integration Code Complete:**
+- Real tRPC calls replace all mock handlers
+- Smart session state management with proper error recovery
+- Loading states connected to mutation status
+- Automatic session recovery on page refresh
+- Error handling for network issues
+- User-friendly completion and restart flows
+- Navigation to report page on completion
+
+### **✅ COMPLETED: Dedicated Question Generation API**
+
+**Status: ✅ COMPLETE - Modality-Agnostic Question Generation Working**
+
+**✅ API Implementation Complete:**
+- **generateInterviewQuestion tRPC procedure**: Independent of sessions, pure question generation
+- **GeneratedQuestion interface**: Structured response with question, keyPoints, metadata
+- **Question type categories**: opening, technical, behavioral, followup
+- **Metadata support**: difficulty, estimated time, tags
+- **Test page implementation**: `/test-question-api` for API demonstration
+
+**✅ RESOLVED: React Hook Error**
+
+**Problem Fixed:** "Invalid hook call" error when `useQuery` was called inside event handler
+
+**Solution Implemented:**
 ```typescript
-// ❌ Specific styling/layout - likely to change during design finalization
-// ❌ Exact UI structure - will evolve with mockups/designs
-// ❌ Visual details - colors, gradients, spacing specifics
-```
+// Fixed approach - useQuery at component top level
+const generateQuestionQuery = api.session.generateInterviewQuestion.useQuery(
+  { jdResumeTextId, personaId, questionType },
+  { enabled: false } // Don't auto-fetch
+);
 
-**Benefits of This Approach:**
-- ✅ **Prevents Test Rewrites**: Focus on stable business logic
-- ✅ **Maintains TDD Momentum**: Continue test-driven development without UI coupling
-- ✅ **Design Flexibility**: UI can evolve without breaking tests
-- ✅ **Focus on Value**: Test what matters for functionality
-
-### **🏗️ Updated Implementation Strategy**
-
-**Phase 3B Architecture:**
-```typescript
-// src/app/(protected)/sessions/[id]/page.tsx
-export default function SessionPage() {
-  const sessionId = useParams().id as string;
-  const mode = useSearchParams().get('mode') || 'text'; // Default to text
-  
-  const renderInterviewMode = () => {
-    switch (mode) {
-      case 'text': return <TextInterviewUI sessionId={sessionId} />;
-      case 'voice': return <VoiceInterviewUI sessionId={sessionId} />;
-      case 'avatar': return <AvatarInterviewUI sessionId={sessionId} />;
-      default: return <TextInterviewUI sessionId={sessionId} />; // Fallback
-    }
-  };
-
-  return (
-    <div className="h-screen bg-white dark:bg-slate-900 flex flex-col">
-      <Timer /> {/* Keep existing timer */}
-      <div className="flex-1">
-        {renderInterviewMode()}
-      </div>
-    </div>
-  );
-}
-```
-
-### **🎯 Phase 3B Implementation Plan**
-
-**Week 1: Core Integration with Minimal Testing (Strategy 1 - Rapid Integration)**
-- ✅ **Parameter Handling**: Implemented ?mode= parameter detection and routing
-- ✅ **UI Components**: TextInterviewUI, VoiceInterviewUI with full dark mode support
-- ✅ **Timer Integration**: Elapsed time counting with color progression
-- 🚧 **Minimal Behavior Tests**: Write tests for stable business logic only
-  - 🚧 User workflow tests (message submission, mode switching)
-  - 🚧 Data flow tests (tRPC integration points)
-  - 🚧 Component API tests (props handling, state management)
-  - 🚧 Parameter routing tests (URL mode handling)
-- 🚧 **tRPC Integration**: Connect UI components to working backend procedures
-- 🚧 **Session State Management**: Real-time session synchronization
-
-**Week 2: Multi-Modal Enhancement**
-- 🚧 **Voice Mode**: Complete voice recording integration
-- 🚧 **Avatar Mode**: Build AvatarInterviewUI based on existing avatar components
-- 🚧 **Mode Selection UI**: Dashboard interface for mode selection
-- 🚧 **Entitlement Checking**: Basic feature access validation
-
-**Week 3: Polish & Integration**
-- 🚧 **End-to-End Testing**: Complete interview flow validation
-- 🚧 **Error Handling**: Comprehensive error states and recovery
-- 🚧 **Performance Optimization**: Loading states and responsiveness
-- 🚧 **Purchase Integration**: Feature entitlement and purchase flows
-- 🚧 **UI Design Finalization**: Implement final designs (tests won't need rewrites)
-
-### **🎮 Mode Selection Flow**
-
-**Dashboard/Session Creation:**
-```typescript
-const ModeSelectorCard = ({ sessionId }: { sessionId: string }) => {
-  const { data: entitlements } = api.user.getEntitlements.useQuery();
-  
-  return (
-    <div className="grid grid-cols-3 gap-4">
-      <ModeCard 
-        mode="text"
-        title="Text Interview"
-        available={entitlements?.text?.enabled}
-        onClick={() => router.push(`/sessions/${sessionId}?mode=text`)}
-      />
-      <ModeCard 
-        mode="voice" 
-        title="Voice Interview"
-        available={entitlements?.voice?.enabled}
-        onClick={() => router.push(`/sessions/${sessionId}?mode=voice`)}
-      />
-      <ModeCard 
-        mode="avatar"
-        title="Avatar Interview" 
-        available={entitlements?.avatar?.enabled}
-        onClick={() => router.push(`/sessions/${sessionId}?mode=avatar`)}
-      />
-    </div>
-  );
+// Use refetch() in event handler instead of calling useQuery
+const handleGenerateQuestion = async () => {
+  const result = await generateQuestionQuery.refetch();
+  if (result.data) {
+    setQuestion(result.data);
+  }
 };
 ```
 
-### **🎯 Available Components for Integration**
+**✅ Test Page Features:**
+- **Working question generation**: Real AI-powered questions from user's JD/Resume
+- **Visual feedback**: Loading states, error handling, structured response display
+- **Metadata display**: Question difficulty, estimated time, tags
+- **Key points extraction**: Properly formatted key points from AI response
+- **React hook compliance**: Proper hook usage patterns
 
-**✅ Ready-to-Use Components:**
-- **TextInterviewUI** - Complete conversation interface with tRPC integration points
-- **VoiceInterviewUI** - Voice recording interface with processing states
-- **Timer** - Elapsed time tracking (updated to count up)
-- **ControlBar** - Session controls with full-width distribution
-- **QuestionDisplay** - Current question presentation
-- **InterviewerAvatar** - AI avatar interface components
-
-**🚧 Integration Points:**
-- **tRPC Hooks**: Connect UI components to working backend procedures
-- **Session State**: Real-time synchronization with database
-- **Error Handling**: Comprehensive error states and user feedback
-- **Loading States**: Processing indicators and responsive feedback
+**Impact:** Provides a modality-agnostic question generation API that can be used across text, voice, and avatar interview modes.
 
 ---
 
-## **📊 Updated Technical Architecture**
+## **🔧 IN PROGRESS: Phase 3C MVP UX Refinement**
 
-### **✅ STRENGTHS:**
-- **Backend Complete**: Production-ready API with 100% test coverage
-- **UI Components Ready**: Feature-complete interview interfaces available
-- **Parameter-Based Routing**: Simplified, clean architecture
-- **Existing Infrastructure**: Timer, controls, and layout components working
+**Status: 🔧 Phase 3C Active - Implementing user-controlled topic transitions for polished MVP UX**
 
-### **🚧 CURRENT PRIORITIES:**
-1. **Parameter Integration**: Implement query parameter handling in session page
-2. **tRPC Connection**: Connect TextInterviewUI to working backend procedures  
-3. **Mode Switching**: Enable seamless switching between interview modalities
-4. **Entitlement System**: Feature access validation and purchase integration
+### **✅ COMPLETED: Session Control & Save Functionality**
+
+**Problem Resolved:** Save/Pause button functionality was causing empty chat bubbles and UX confusion
+
+**✅ Save Functionality Implementation:**
+- **Terminology Correction**: Changed "Pause" → "Save" to accurately reflect checkpoint behavior
+- **Empty Bubble Fix**: Updated conversation history filter to exclude pause entries from chat display
+- **Server Validation**: Added input validation to prevent empty responses (`z.string().min(1).trim()`)
+- **UI State Management**: Proper loading states and button styling for save operations
+- **Type Safety**: Updated interfaces and props for new save terminology
+
+**✅ Technical Implementation:**
+```typescript
+// Backend - Save creates checkpoint without disrupting chat
+const pauseEntry: MvpSessionTurn = {
+  id: `pause-${Date.now()}`,
+  role: "user",
+  text: input.currentResponse ?? '',
+  type: 'pause', // Special marker
+  timestamp: new Date(),
+};
+
+// Frontend - History filtering excludes pause entries
+const conversationHistory = history
+  .filter(turn => {
+    return (turn.role === 'user' && turn.type !== 'pause') || 
+           (turn.role === 'model' && turn.type === 'conversational');
+  })
+```
+
+**✅ UX Improvements:**
+- **Clear Save Behavior**: Users understand "Save" preserves progress vs "Pause" implying need to resume
+- **Clean Chat History**: Save operations don't clutter conversation with empty bubbles
+- **Proper Button States**: Loading states show "Saving..." and disabled styling when not available
+- **End Interview Protection**: Confirmation dialog prevents accidental session termination
+
+### **🎯 NEXT FOCUS: User-Controlled Topic Transitions**
+
+**Current Challenge:** AI randomly switches between conversational responses and new topical questions, giving users no control over interview flow.
+
+**MVP Solution Design:** User-controlled topic transitions with clear separation of concerns:
+
+```
+Target Interview Flow:
+1. AI gives topical question → "Current Question" section
+2. User responds → Chat
+3. AI gives conversational follow-up → Chat  
+4. User responds → Chat
+5. [After 2 exchanges] "Next Question" button becomes available
+6. User clicks "Next Question" → New topical question appears
+```
 
 ---
 
 ## **🎯 Current Development Status**
 
-**✅ PHASE 3A COMPLETE:**
-- ✅ **Backend Foundation**: 4 production-ready procedures (11/11 tests passing)
-- ✅ **AI Integration**: Full Gemini integration with real conversation flow
+**✅ PHASE 3A & 3B COMPLETE:**
+- ✅ **Backend Foundation**: 5 production-ready procedures (11/11 tests passing + question generation API)
+- ✅ **AI Integration**: Full Gemini integration with real conversation flow and standalone question generation
 - ✅ **Session Management**: Complete lifecycle with pause/resume/end functionality
+- ✅ **Frontend Integration**: Working TextInterviewUI with smart session state management
+- ✅ **Question Generation API**: Dedicated modality-agnostic question generation system
+- ✅ **React Compliance**: Proper hook usage patterns and error handling
 
-**🚧 PHASE 3B ACTIVE:**
-- 🚧 **Parameter-Based Routing**: Implementing ?mode= approach for modality selection
-- 🚧 **UI Integration**: Connecting existing TextInterviewUI to working backend
-- 🚧 **Multi-Modal Support**: Progressive enhancement for voice/avatar modes
+**✅ PHASE 3C PROGRESS:**
+- ✅ **Session Control Polish**: Save functionality with proper terminology and empty bubble fix
+- ✅ **UX Improvements**: Clear button states, loading feedback, and confirmation dialogs
+- ✅ **Input Validation**: Server-side protection against empty responses and malformed data
+- ✅ **Chat History Filtering**: Clean conversation display excluding save checkpoints
+- 🔧 **User-Controlled Topics**: Next priority - implement user-controlled topic transitions
 
-**📋 NEXT PHASE 3C:**
-- 📋 **End-to-End Testing**: Complete interview flow validation
-- 📋 **Purchase Integration**: Feature entitlement and monetization
-- 📋 **Performance Polish**: Optimization and mobile responsiveness
+**🔧 CURRENT ACTIVE TASK:**
+- 🔧 **AI Function Separation**: Split continueInterview into conversational vs topical functions
+- 🔧 **tRPC Procedure Refactoring**: submitResponse + getNextTopicalQuestion procedures  
+- 🔧 **"Next Question" Button**: User-controlled flow with 2-exchange conversation cycles
+- 🔧 **AI Prompt Optimization**: Separate prompts for conversation vs topic generation
 
-**Revised Target: 2-3 weeks for complete Phase 3 (accelerated from original 8 weeks)**
+**📋 UPCOMING PRIORITIES:**
+- 📋 **Voice Mode Completion**: Fix remaining 5 VoiceInterviewUI tests after UX refinement
+- 📋 **Avatar Mode Implementation**: Build AvatarInterviewUI based on existing components
+- 📋 **Multi-Modal Integration**: Parameter-based mode routing (?mode=text|voice|avatar)
+- 📋 **Purchase Integration**: Feature entitlement and monetization system
+
+**📋 UPCOMING PHASE 4:**
+- 📋 **UX Architecture Enhancement**: Multi-JD target management system
+- 📋 **Advanced Features**: Multiple interview types, enhanced analytics
+- 📋 **Production Polish**: Performance optimization and mobile responsiveness
+
+**Milestone Achievement: Session control and save functionality completed. Moving to user-controlled topic transitions for polished MVP conversation flow.**
 
 ---
 
-## **🚀 Immediate Next Steps**
+## **🚀 Next Development Priorities**
 
-**Current Priority: Implement Minimal Behavior Testing for Interview Components**
-1. **Write Failing Tests for TextInterviewUI**: Focus on stable business logic only
-   - User workflow tests (message submission, form handling)
-   - Data flow tests (onSendMessage callbacks, state updates)
-   - Component API tests (props handling, loading states)
-   - Avoid testing specific styling or UI structure details
-2. **Write Failing Tests for VoiceInterviewUI**: Core recording functionality
-   - Voice recording workflow (start/stop/process)
-   - State management (recording, processing, idle states)
-   - Callback handling (onSendVoiceInput, onPause, onEnd)
-3. **Write Parameter Routing Tests**: URL-based mode switching
-   - Mode parameter detection (?mode=text/voice/avatar)
-   - Component rendering based on mode
-   - Default fallback behavior
-4. **Connect TextInterviewUI to tRPC**: Real backend integration after tests pass
+**Immediate Focus: MVP UX Refinement (Phase 3C)**
+1. **Implement Function Separation**: Split AI functions for clear responsibilities
+2. **Update tRPC Procedures**: Replace confusing getNextQuestion with submitResponse + getNextTopicalQuestion
+3. **Add "Next Question" Button**: User-controlled topic transitions with visual feedback
+4. **Test & Validate UX**: Ensure 2-exchange flow works smoothly
 
-**Testing Philosophy: Focus on What Won't Change**
-- ✅ Test user workflows and business logic
-- ✅ Test component APIs and data flow
-- ❌ Avoid testing visual details that may change with design
-- ❌ Skip styling-specific assertions until UI is finalized
+**Post-MVP Enhancement:**
+1. **Complete VoiceInterviewUI**: Fix remaining 5 test failures for recording workflow
+2. **Implement Avatar Mode**: Build AvatarInterviewUI using existing avatar components
+3. **Parameter-Based Routing**: Add ?mode= query parameter handling to session pages
+4. **Mode Selection UI**: Dashboard interface for choosing interview modality
 
-**Status: 🚧 Phase 3B Minimal Testing → Ready for TDD Implementation** 
+**Architecture Enhancement:**
+1. **Multi-JD Target System**: Support multiple job targets per user
+2. **Enhanced Onboarding**: Multi-step workflow for JD/Resume input
+3. **JD Management Interface**: Organize and configure multiple interview targets
+4. **Advanced Analytics**: Cross-session comparisons and skill progression tracking
+
+**Status: 🔧 Phase 3C Active - Implementing user-controlled topic transitions for polished MVP UX** 

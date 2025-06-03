@@ -4,12 +4,68 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
-import { getFirstQuestion, continueInterview, getNextQuestion } from "~/lib/gemini";
+import { continueInterview, getFirstQuestion, continueConversation, getNewTopicalQuestion } from "~/lib/gemini";
 import { getPersona } from "~/lib/personaService";
-import type { MvpSessionTurn, SessionReportData, SessionAnalyticsData, SessionFeedbackData } from "~/types"; // Added new types
-import { zodMvpSessionTurnArray } from "~/types"; // Added import for Zod schema
-import { Prisma } from '@prisma/client'; // Added import for Prisma types
+import type { MvpSessionTurn, SessionReportData, SessionAnalyticsData, SessionFeedbackData } from "~/types";
+import { zodMvpSessionTurnArray, zodPersonaId, PERSONA_IDS } from "~/types";
+import type { Prisma } from '@prisma/client'; // Changed to type import
 import { TRPCError } from "@trpc/server";
+
+// Helper function for consistent question generation
+async function generateQuestionForSession(
+  jdResumeTextId: string,
+  personaId: string,
+  questionType: 'opening' | 'technical' | 'behavioral' | 'followup' = 'opening',
+  userId: string
+) {
+  // Fetch JD/Resume data with user authorization
+  const jdResumeText = await db.jdResumeText.findUnique({
+    where: { 
+      id: jdResumeTextId,
+      userId: userId, // Ensure user owns this data
+    },
+  });
+
+  if (!jdResumeText) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'JD/Resume text not found or not authorized',
+    });
+  }
+
+  // Get persona configuration
+  const persona = await getPersona(personaId);
+  if (!persona) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: `Persona not found: ${personaId}`,
+    });
+  }
+
+  // Generate question using AI service
+  const questionResult = await getFirstQuestion(jdResumeText, persona);
+  
+  // Parse the AI response to extract structured data
+  const { parseAiResponse } = await import('~/lib/gemini');
+  const parsedResponse = parseAiResponse(questionResult.rawAiResponseText);
+
+  return {
+    question: parsedResponse.nextQuestion ?? questionResult.questionText,
+    keyPoints: parsedResponse.keyPoints ?? [
+      "Focus on your specific role and contributions",
+      "Highlight technologies and tools you used", 
+      "Discuss challenges faced and how you overcame them"
+    ],
+    questionType,
+    personaId,
+    metadata: {
+      difficulty: 'medium' as const,
+      estimatedResponseTime: 180, // 3 minutes in seconds
+      tags: ['general', 'experience'] as string[],
+    },
+    rawAiResponse: questionResult.rawAiResponseText,
+  };
+}
 
 export const sessionRouter = createTRPCRouter({
   createSession: protectedProcedure
@@ -163,16 +219,66 @@ export const sessionRouter = createTRPCRouter({
 
       const aiResponse = await continueInterview(jdResumeRecord, persona, [...historyPlaceholder], input.userAnswer);
       
-      const aiTurn: MvpSessionTurn = {
-        id: `turn-${Date.now()}-model`,
-        role: "model",
-        text: aiResponse.nextQuestion ?? "Error: No question received",
-        analysis: aiResponse.analysis,
-        feedbackPoints: aiResponse.feedbackPoints,
-        suggestedAlternative: aiResponse.suggestedAlternative,
-        rawAiResponseText: aiResponse.rawAiResponseText,
-        timestamp: new Date(),
-      };
+      // Determine if this is a conversational follow-up or a new topic
+      // For now, we'll use a simple heuristic: if the response contains analysis/feedback,
+      // it's likely a conversational response. We can make this more sophisticated later.
+      const hasAnalysisOrFeedback = aiResponse.analysis && aiResponse.analysis !== "N/A" && 
+                                   aiResponse.analysis !== "No analysis provided for this answer.";
+      const hasMeaningfulFeedback = aiResponse.feedbackPoints && 
+                                   aiResponse.feedbackPoints.length > 0 && 
+                                   !aiResponse.feedbackPoints.includes("No specific feedback provided.");
+
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+      const isConversationalResponse = hasAnalysisOrFeedback || hasMeaningfulFeedback;
+
+      // Create appropriate AI turn based on response type
+      let aiTurn: MvpSessionTurn;
+      let isTopicTransition = false;
+
+      if (isConversationalResponse) {
+        // This is a conversational follow-up - show analysis/feedback in chat
+        let conversationalText = "";
+        
+        if (hasAnalysisOrFeedback) {
+          conversationalText += `${aiResponse.analysis}\n\n`;
+        }
+        
+        if (hasMeaningfulFeedback) {
+          conversationalText += `💡 Key feedback:\n${aiResponse.feedbackPoints?.map(point => `• ${point}`).join('\n')}\n\n`;
+        }
+        
+        // Add the follow-up question to the conversation
+        if (aiResponse.nextQuestion) {
+          conversationalText += `${aiResponse.nextQuestion}`;
+        }
+
+        aiTurn = {
+          id: `turn-${Date.now()}-model`,
+          role: "model",
+          text: conversationalText.trim(),
+          analysis: aiResponse.analysis,
+          feedbackPoints: aiResponse.feedbackPoints,
+          suggestedAlternative: aiResponse.suggestedAlternative,
+          rawAiResponseText: aiResponse.rawAiResponseText,
+          timestamp: new Date(),
+          type: 'conversational', // Mark as conversational response
+        };
+      } else {
+        // This is a new topical question - will update current question section
+        aiTurn = {
+          id: `turn-${Date.now()}-model`,
+          role: "model",
+          text: aiResponse.nextQuestion ?? "Interview completed",
+          analysis: aiResponse.analysis,
+          feedbackPoints: aiResponse.feedbackPoints,
+          suggestedAlternative: aiResponse.suggestedAlternative,
+          rawAiResponseText: aiResponse.rawAiResponseText,
+          timestamp: new Date(),
+          type: 'topic_transition', // Mark as topic transition
+        };
+        isTopicTransition = true;
+      }
+
       historyPlaceholder.push(aiTurn);
 
       // Convert to JSON-compatible format for Prisma
@@ -196,6 +302,29 @@ export const sessionRouter = createTRPCRouter({
   //     // TODO: Implement logic
   //     return null;
   //   }),
+
+  // ==========================================
+  // Question Generation API - Modality Agnostic
+  // ==========================================
+
+  generateInterviewQuestion: protectedProcedure
+    .input(z.object({
+      jdResumeTextId: z.string(),
+      personaId: zodPersonaId,
+      questionType: z.enum(['opening', 'technical', 'behavioral', 'followup']).default('opening'),
+      previousQuestions: z.array(z.string()).optional(), // To avoid duplicates
+      context: z.string().optional(), // Additional context for follow-up questions
+    }))
+    .query(async ({ input, ctx }) => {
+      // ✨ NEW: Use the shared question generation helper function
+      // This ensures consistency between standalone and session-based question generation
+      return await generateQuestionForSession(
+        input.jdResumeTextId,
+        input.personaId,
+        input.questionType,
+        ctx.session.user.id
+      );
+    }),
 
   // ==========================================
   // Phase 2A: Session Reports & Analytics Procedures
@@ -484,7 +613,7 @@ export const sessionRouter = createTRPCRouter({
   startInterviewSession: protectedProcedure
     .input(z.object({ 
       sessionId: z.string(),
-      personaId: z.string() 
+      personaId: zodPersonaId // Use shared validation schema
     }))
     .mutation(async ({ ctx, input }) => {
       // Verify session exists and belongs to user
@@ -516,8 +645,118 @@ export const sessionRouter = createTRPCRouter({
         });
       }
 
-      // Get persona configuration
+      // Get persona configuration - now type-safe!
       const persona = await getPersona(input.personaId);
+      if (!persona) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Persona not found: ${input.personaId}. Available personas: ${Object.values(PERSONA_IDS).join(', ')}`,
+        });
+      }
+
+      // ✨ NEW: Use the shared question generation helper function with randomization
+      // This ensures consistency between standalone and session-based question generation
+      // and prevents duplicate questions across sessions
+      const questionTypes = ['opening', 'technical', 'behavioral'] as const;
+      const randomQuestionType = questionTypes[Math.floor(Math.random() * questionTypes.length)];
+      
+      const questionGenerationResult = await generateQuestionForSession(
+        session.jdResumeTextId,
+        input.personaId,
+        randomQuestionType, // Now randomized instead of always 'opening'
+        ctx.session.user.id
+      );
+      
+      // Create the first AI turn and save to database
+      const aiTurn: MvpSessionTurn = {
+        id: `turn-${Date.now()}-model`,
+        role: "model",
+        text: questionGenerationResult.question,
+        rawAiResponseText: questionGenerationResult.rawAiResponse,
+        timestamp: new Date(),
+      };
+
+      // Update session with the first AI question in history
+      const historyForDb = [aiTurn].map(turn => ({
+        ...turn,
+        timestamp: turn.timestamp.toISOString()
+      })) as Prisma.InputJsonValue;
+
+      await ctx.db.sessionData.update({
+        where: { id: input.sessionId },
+        data: { 
+          history: historyForDb,
+          startTime: new Date() // Also set the start time
+        },
+      });
+      
+      return {
+        sessionId: input.sessionId,
+        isActive: true, // endTime === null indicates active session
+        personaId: input.personaId,
+        currentQuestion: questionGenerationResult.question,
+        keyPoints: questionGenerationResult.keyPoints,
+        questionNumber: 1,
+        totalQuestions: 10, // Default total questions for interview
+        timeRemaining: session.durationInSeconds ?? 3600, // Use session configuration
+        conversationHistory: [],
+      };
+    }),
+
+  // 🔗 INTEGRATION PHASE: Separated procedures for clean conversation flow
+  
+  // ✅ submitResponse - purely conversational responses within same topic
+  submitResponse: protectedProcedure
+    .input(z.object({
+      sessionId: z.string(),
+      userResponse: z.string().min(1, "User response cannot be empty").trim(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      // Verify session exists and user has access
+      const session = await ctx.db.sessionData.findUnique({
+        where: { id: input.sessionId },
+        include: { jdResumeText: true },
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Session not found',
+        });
+      }
+
+      if (session.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'Not authorized to access this session',
+        });
+      }
+
+      // Parse existing conversation history
+      let history: MvpSessionTurn[] = [];
+      if (session.history) {
+        try {
+          history = zodMvpSessionTurnArray.parse(session.history);
+        } catch (error) {
+          console.error("Failed to parse session history:", error);
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Invalid session history format',
+          });
+        }
+      }
+
+      // Add user response to history
+      const userTurn: MvpSessionTurn = {
+        id: `turn-${Date.now()}-user`,
+        role: "user",
+        text: input.userResponse,
+        timestamp: new Date(),
+      };
+      history.push(userTurn);
+
+      // Get persona and call AI service for conversational response
+      const persona = await getPersona(session.personaId);
       if (!persona) {
         throw new TRPCError({
           code: 'NOT_FOUND',
@@ -525,18 +764,163 @@ export const sessionRouter = createTRPCRouter({
         });
       }
 
-      // Real AI service call with proper persona
-      const firstQuestionResult = await getFirstQuestion(session.jdResumeText, persona);
-      
+      // 🔗 Use separated continueConversation function - NO topic transitions
+      const conversationalResponse = await continueConversation(
+        session.jdResumeText,
+        persona,
+        history,
+        input.userResponse
+      );
+
+      // Create conversational AI turn for chat history
+      const aiTurn: MvpSessionTurn = {
+        id: `turn-${Date.now()}-model`,
+        role: "model",
+        text: conversationalResponse.followUpQuestion,
+        analysis: conversationalResponse.analysis,
+        feedbackPoints: conversationalResponse.feedbackPoints,
+        rawAiResponseText: conversationalResponse.rawAiResponseText,
+        timestamp: new Date(),
+        type: 'conversational', // Mark as conversational response
+      };
+
+      history.push(aiTurn);
+
+      // Update session with new history
+      const historyForDb = history.map(turn => ({
+        ...turn,
+        timestamp: turn.timestamp.toISOString()
+      })) as Prisma.InputJsonValue;
+
+      await ctx.db.sessionData.update({
+        where: { id: input.sessionId },
+        data: { history: historyForDb },
+      });
+
       return {
-        sessionId: input.sessionId,
-        isActive: true, // endTime === null indicates active session
-        personaId: input.personaId,
-        currentQuestion: firstQuestionResult.questionText,
-        questionNumber: 1,
-        totalQuestions: 10, // Default total questions for interview
-        timeRemaining: session.durationInSeconds ?? 3600, // Use session configuration
-        conversationHistory: [],
+        analysis: conversationalResponse.analysis,
+        feedbackPoints: conversationalResponse.feedbackPoints,
+        followUpQuestion: conversationalResponse.followUpQuestion,
+        conversationHistory: [
+          {
+            role: 'user' as const,
+            content: input.userResponse,
+            timestamp: new Date().toISOString(),
+          },
+          {
+            role: 'ai' as const,
+            content: aiTurn.text,
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+    }),
+
+  // ✅ getNextTopicalQuestion - topic transitions only, user-controlled
+  getNextTopicalQuestion: protectedProcedure
+    .input(z.object({
+      sessionId: z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      // Verify session exists and user has access
+      const session = await ctx.db.sessionData.findUnique({
+        where: { id: input.sessionId },
+        include: { jdResumeText: true },
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Session not found',
+        });
+      }
+
+      if (session.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'Not authorized to access this session',
+        });
+      }
+
+      // Parse existing conversation history
+      let history: MvpSessionTurn[] = [];
+      if (session.history) {
+        try {
+          history = zodMvpSessionTurnArray.parse(session.history);
+        } catch (error) {
+          console.error("Failed to parse session history:", error);
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Invalid session history format',
+          });
+        }
+      }
+
+      // Extract covered topics from history for intelligent topic selection
+      const coveredTopics: string[] = [];
+      for (const turn of history) {
+        if (turn.role === 'model' && turn.type === 'topic_transition' && turn.rawAiResponseText) {
+          // Try to extract topic from the AI response
+          const questionMatch = /<QUESTION>(.*?)<\/QUESTION>/s.exec(turn.rawAiResponseText);
+          if (questionMatch) {
+            const question = questionMatch[1]?.toLowerCase() ?? '';
+            // Simple topic detection - can be enhanced
+            if (question.includes('react')) coveredTopics.push('React');
+            if (question.includes('typescript')) coveredTopics.push('TypeScript');
+            if (question.includes('node') || question.includes('backend')) coveredTopics.push('Node.js');
+            if (question.includes('team') || question.includes('leadership')) coveredTopics.push('Leadership');
+            if (question.includes('system') || question.includes('design')) coveredTopics.push('System Design');
+          }
+        }
+      }
+
+      // Get persona
+      const persona = await getPersona(session.personaId);
+      if (!persona) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Persona not found',
+        });
+      }
+
+      // 🔗 Use separated getNewTopicalQuestion function - ONLY topic transitions
+      const topicalResponse = await getNewTopicalQuestion(
+        session.jdResumeText,
+        persona,
+        history,
+        coveredTopics
+      );
+
+      // Create topic transition AI turn
+      const aiTurn: MvpSessionTurn = {
+        id: `turn-${Date.now()}-model`,
+        role: "model",
+        text: topicalResponse.questionText,
+        rawAiResponseText: topicalResponse.rawAiResponseText,
+        timestamp: new Date(),
+        type: 'topic_transition', // Mark as topic transition
+      };
+
+      history.push(aiTurn);
+
+      // Update session with new history
+      const historyForDb = history.map(turn => ({
+        ...turn,
+        timestamp: turn.timestamp.toISOString()
+      })) as Prisma.InputJsonValue;
+
+      await ctx.db.sessionData.update({
+        where: { id: input.sessionId },
+        data: { history: historyForDb },
+      });
+
+      const questionNumber = history.filter(turn => turn.role === 'model' && (!turn.type || turn.type === 'topic_transition')).length;
+
+      return {
+        questionText: topicalResponse.questionText,
+        keyPoints: topicalResponse.keyPoints,
+        questionNumber,
+        coveredTopics, // Return for frontend tracking
       };
     }),
 
@@ -607,17 +991,66 @@ export const sessionRouter = createTRPCRouter({
         input.userResponse
       );
 
-      // Add AI response to history
-      const aiTurn: MvpSessionTurn = {
-        id: `turn-${Date.now()}-model`,
-        role: "model",
-        text: aiResponse.nextQuestion ?? "Interview completed",
-        analysis: aiResponse.analysis,
-        feedbackPoints: aiResponse.feedbackPoints,
-        suggestedAlternative: aiResponse.suggestedAlternative,
-        rawAiResponseText: aiResponse.rawAiResponseText,
-        timestamp: new Date(),
-      };
+      // Determine if this is a conversational follow-up or a new topic
+      // For now, we'll use a simple heuristic: if the response contains analysis/feedback,
+      // it's likely a conversational response. We can make this more sophisticated later.
+      const hasAnalysisOrFeedback = aiResponse.analysis && aiResponse.analysis !== "N/A" && 
+                                   aiResponse.analysis !== "No analysis provided for this answer.";
+      const hasMeaningfulFeedback = aiResponse.feedbackPoints && 
+                                   aiResponse.feedbackPoints.length > 0 && 
+                                   !aiResponse.feedbackPoints.includes("No specific feedback provided.");
+
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+      const isConversationalResponse = hasAnalysisOrFeedback || hasMeaningfulFeedback;
+
+      // Create appropriate AI turn based on response type
+      let aiTurn: MvpSessionTurn;
+      let isTopicTransition = false;
+
+      if (isConversationalResponse) {
+        // This is a conversational follow-up - show analysis/feedback in chat
+        let conversationalText = "";
+        
+        if (hasAnalysisOrFeedback) {
+          conversationalText += `${aiResponse.analysis}\n\n`;
+        }
+        
+        if (hasMeaningfulFeedback) {
+          conversationalText += `💡 Key feedback:\n${aiResponse.feedbackPoints?.map(point => `• ${point}`).join('\n')}\n\n`;
+        }
+        
+        // Add the follow-up question to the conversation
+        if (aiResponse.nextQuestion) {
+          conversationalText += `${aiResponse.nextQuestion}`;
+        }
+
+        aiTurn = {
+          id: `turn-${Date.now()}-model`,
+          role: "model",
+          text: conversationalText.trim(),
+          analysis: aiResponse.analysis,
+          feedbackPoints: aiResponse.feedbackPoints,
+          suggestedAlternative: aiResponse.suggestedAlternative,
+          rawAiResponseText: aiResponse.rawAiResponseText,
+          timestamp: new Date(),
+          type: 'conversational', // Mark as conversational response
+        };
+      } else {
+        // This is a new topical question - will update current question section
+        aiTurn = {
+          id: `turn-${Date.now()}-model`,
+          role: "model",
+          text: aiResponse.nextQuestion ?? "Interview completed",
+          analysis: aiResponse.analysis,
+          feedbackPoints: aiResponse.feedbackPoints,
+          suggestedAlternative: aiResponse.suggestedAlternative,
+          rawAiResponseText: aiResponse.rawAiResponseText,
+          timestamp: new Date(),
+          type: 'topic_transition', // Mark as topic transition
+        };
+        isTopicTransition = true;
+      }
+
       history.push(aiTurn);
 
       // Update session with new history
@@ -644,13 +1077,22 @@ export const sessionRouter = createTRPCRouter({
       }
 
       return {
-        nextQuestion: aiResponse.nextQuestion,
+        nextQuestion: isTopicTransition ? aiResponse.nextQuestion : null, // Only return if topic changed
         questionNumber,
         isComplete,
+        isTopicTransition,
+        conversationResponse: isConversationalResponse ? aiTurn.text : null, // Include conversational response
+        analysis: aiResponse.analysis,
+        feedbackPoints: aiResponse.feedbackPoints,
         conversationHistory: [
           {
             role: 'user' as const,
             content: input.userResponse,
+            timestamp: new Date().toISOString(),
+          },
+          {
+            role: 'ai' as const,
+            content: aiTurn.text,
             timestamp: new Date().toISOString(),
           },
         ],
@@ -748,6 +1190,49 @@ export const sessionRouter = createTRPCRouter({
       });
     }),
 
+  // 🟢 GREEN PHASE: resetSession procedure for restarting completed sessions
+  resetSession: protectedProcedure
+    .input(z.object({
+      sessionId: z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      // Verify session exists and user has access
+      const session = await ctx.db.sessionData.findUnique({
+        where: { id: input.sessionId },
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Session not found',
+        });
+      }
+
+      if (session.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'Not authorized to access this session',
+        });
+      }
+
+      // Reset session to fresh state - clear ALL historical data
+      await ctx.db.sessionData.update({
+        where: { id: input.sessionId },
+        data: {
+          startTime: new Date(),   // Reset start time (will be updated when interview actually starts)
+          endTime: null,           // Mark as active again
+          history: [],             // Clear conversation history
+          overallSummary: null,    // Clear any summary
+        },
+      });
+
+      return {
+        sessionId: input.sessionId,
+        isReset: true,
+        message: 'Session reset successfully and ready to restart',
+      };
+    }),
+
   // 🟢 COMPLETED: getActiveSession procedure with real data
   getActiveSession: protectedProcedure
     .input(z.object({
@@ -785,29 +1270,55 @@ export const sessionRouter = createTRPCRouter({
         }
       }
 
-      // Convert history to frontend format
-      const conversationHistory = history.map(turn => ({
-        role: turn.role === 'model' ? 'ai' as const : 'user' as const,
-        content: turn.text,
-        timestamp: typeof turn.timestamp === 'string' ? turn.timestamp : turn.timestamp.toISOString(),
-      }));
+      // Convert history to frontend format - Include conversational responses in chat history
+      // but exclude topic transitions and pause entries (those are not part of the conversation)
+      const conversationHistory = history
+        .filter(turn => {
+          // Include user responses (except pause entries) and AI conversational responses (but not topic transitions)
+          return (turn.role === 'user' && turn.type !== 'pause') || 
+                 (turn.role === 'model' && turn.type === 'conversational');
+        })
+        .map(turn => ({
+          role: turn.role === 'user' ? 'user' as const : 'ai' as const,
+          content: turn.text,
+          timestamp: typeof turn.timestamp === 'string' ? turn.timestamp : turn.timestamp.toISOString(),
+        }));
 
-      // Find the most recent AI question for currentQuestion
-      const lastAiMessage = history
-        .filter(turn => turn.role === 'model')
+      // Find the most recent AI topic transition for currentQuestion
+      const lastTopicTransition = history
+        .filter(turn => turn.role === 'model' && (!turn.type || turn.type === 'topic_transition'))
         .pop();
 
-      // Determine current question
+      // Determine current question and extract key points
       let currentQuestion = 'Loading...';
+      let keyPoints: string[] = [];
       let questionNumber = 1;
 
-      if (lastAiMessage) {
-        currentQuestion = lastAiMessage.text;
-        questionNumber = history.filter(turn => turn.role === 'model').length;
+      if (lastTopicTransition) {
+        currentQuestion = lastTopicTransition.text;
+        questionNumber = history.filter(turn => turn.role === 'model' && (!turn.type || turn.type === 'topic_transition')).length;
+        
+        // Extract key points from the AI response if available
+        if (lastTopicTransition.rawAiResponseText) {
+          try {
+            const { parseAiResponse } = await import('~/lib/gemini');
+            const parsedResponse = parseAiResponse(lastTopicTransition.rawAiResponseText);
+            keyPoints = parsedResponse.keyPoints ?? [];
+          } catch (error) {
+            console.error("Failed to parse AI response for key points:", error);
+            // Use fallback key points
+            keyPoints = [
+              "Focus on your specific role and contributions",
+              "Highlight technologies and tools you used", 
+              "Discuss challenges faced and how you overcame them"
+            ];
+          }
+        }
       } else {
-        // No questions yet - this is a brand new session that needs to be started
+        // No topic transitions yet - this is a brand new session that needs to be started
         currentQuestion = 'Interview not started yet. Please start the interview.';
         questionNumber = 0;
+        keyPoints = [];
       }
 
       return {
@@ -815,6 +1326,7 @@ export const sessionRouter = createTRPCRouter({
         isActive: session.endTime === null, // endTime === null means active
         personaId: session.personaId,
         currentQuestion,
+        keyPoints,
         conversationHistory,
         questionNumber,
         timeRemaining: session.durationInSeconds ?? 1800, // Use actual duration or default
