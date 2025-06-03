@@ -6,7 +6,8 @@ import { api } from '~/trpc/react';
 import TextInterviewUI from '~/components/Sessions/InterviewUI/TextInterviewUI';
 import VoiceInterviewUI from '~/components/Sessions/InterviewUI/VoiceInterviewUI';
 import { INTERVIEW_MODES, SESSION_STATES, PERSONA_IDS } from '~/types';
-import type { InterviewMode, SessionState, GeneratedQuestion } from '~/types';
+import type { InterviewMode, SessionState, GeneratedQuestion, PersonaId } from '~/types';
+import { getPersona } from '~/lib/personaService';
 
 export default function SessionPage() {
   const params = useParams();
@@ -21,6 +22,7 @@ export default function SessionPage() {
   const [generatedQuestion, setGeneratedQuestion] = useState<GeneratedQuestion | null>(null);
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [userInput, setUserInput] = useState<string>('');
+  const [personaName, setPersonaName] = useState<string>('');
 
   // Question types to randomly select from
   const questionTypes = ['opening', 'technical', 'behavioral', 'followup'] as const;
@@ -52,10 +54,16 @@ export default function SessionPage() {
   
   const resetSession = api.session.resetSession.useMutation({
     onSuccess: () => {
-      // After reset, start the session
+      // After reset, start the session with the ORIGINAL persona (not hard-coded)
+      const sessionPersonaId = activeSession.data?.personaId;
+      const validPersonaIds = Object.values(PERSONA_IDS) as string[];
+      const personaId: PersonaId = (validPersonaIds.includes(sessionPersonaId ?? '')) 
+        ? sessionPersonaId as PersonaId
+        : PERSONA_IDS.HR_RECRUITER_GENERAL;
+      
       startSession.mutate({ 
         sessionId, 
-        personaId: PERSONA_IDS.HR_RECRUITER_GENERAL  // Type-safe constant
+        personaId: personaId  // ✅ Use original persona from the session
       });
     },
     onError: (error) => {
@@ -137,6 +145,21 @@ export default function SessionPage() {
       });
     }
   }, [sessionState, sessionId, startSession]);
+
+  // Fetch persona name when session data is available
+  useEffect(() => {
+    if (activeSession.data?.personaId) {
+      getPersona(activeSession.data.personaId)
+        .then((persona) => {
+          if (persona) {
+            setPersonaName(persona.name);
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to get persona:', error);
+        });
+    }
+  }, [activeSession.data?.personaId]);
 
   // Handle question generation
   const handleGenerateQuestion = async () => {
@@ -369,6 +392,7 @@ export default function SessionPage() {
         keyPoints: sessionData.keyPoints,
         status: sessionData.isActive ? 'active' as const : 'completed' as const,
         startTime: new Date(), // Default to current time for now
+        personaName: personaName, // Add persona name to session data
       };
       
       switch (mode) {
