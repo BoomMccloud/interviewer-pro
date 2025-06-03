@@ -164,7 +164,7 @@ export default function TextInterviewUI({
       {/* Chat History Section - Middle (Scrollable) */}
       <div 
         ref={chatScrollRef}
-        className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/30 dark:bg-slate-800/30"
+        className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50/30 dark:bg-slate-800/30"
         style={{ minHeight: '200px' }}
       >
         {conversation.length === 0 ? (
@@ -176,7 +176,7 @@ export default function TextInterviewUI({
             </div>
           </div>
         ) : (
-          <div className="w-full space-y-4">
+          <div className="w-full space-y-6">
             {conversation.map((message, index) => (
               <div
                 key={index}
