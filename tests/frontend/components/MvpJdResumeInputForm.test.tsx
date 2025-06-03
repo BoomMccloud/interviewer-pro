@@ -80,7 +80,7 @@ describe('MvpJdResumeInputForm', () => {
     expect(screen.getByLabelText('Job Description')).toBeInTheDocument();
     expect(screen.getByLabelText('Resume')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /save text/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /start technical interview/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start interview/i })).toBeInTheDocument();
   });
 
   it('renders with initial values', () => {
@@ -115,7 +115,7 @@ describe('MvpJdResumeInputForm', () => {
   it('disables start session button when text areas are empty', () => {
     render(<MvpJdResumeInputForm />);
 
-    const startButton = screen.getByRole('button', { name: /start technical interview/i });
+    const startButton = screen.getByRole('button', { name: /start interview/i });
     expect(startButton).toBeDisabled();
   });
 
@@ -125,7 +125,7 @@ describe('MvpJdResumeInputForm', () => {
 
     const jdTextarea = screen.getByLabelText('Job Description');
     const resumeTextarea = screen.getByLabelText('Resume');
-    const startButton = screen.getByRole('button', { name: /start technical interview/i });
+    const startButton = screen.getByRole('button', { name: /start interview/i });
 
     await user.type(jdTextarea, 'Job description content');
     await user.type(resumeTextarea, 'Resume content');
@@ -210,7 +210,7 @@ describe('MvpJdResumeInputForm', () => {
 
     const jdTextarea = screen.getByLabelText('Job Description');
     const resumeTextarea = screen.getByLabelText('Resume');
-    const startButton = screen.getByRole('button', { name: /start technical interview/i });
+    const startButton = screen.getByRole('button', { name: /start interview/i });
 
     await user.type(jdTextarea, 'Test JD');
     await user.type(resumeTextarea, 'Test Resume');

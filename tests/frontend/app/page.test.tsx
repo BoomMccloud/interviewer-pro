@@ -62,7 +62,7 @@ describe('Home Page', () => {
     expect(mockAuth).toHaveBeenCalledTimes(1); // Ensure auth was checked
     expect(mockRedirect).not.toHaveBeenCalled();
     expect(screen.getByRole('heading', { name: /AI Interview Pro/i })).toBeInTheDocument();
-    expect(screen.getByText(/Prepare for your technical interviews with AI. Sign in to continue./i)).toBeInTheDocument();
+    expect(screen.getByText(/Prepare for your interviews with AI. Sign in to continue./i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Sign In/i })).toBeInTheDocument();
   });
 }); 

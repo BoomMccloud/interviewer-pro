@@ -55,7 +55,7 @@ describe('MvpSessionHistoryList', () => {
     render(<MvpSessionHistoryList sessions={[]} />);
 
     expect(screen.getByText('No interview sessions yet')).toBeInTheDocument();
-    expect(screen.getByText('Start your first technical interview to see sessions here')).toBeInTheDocument();
+    expect(screen.getByText('Start your first interview to see sessions here')).toBeInTheDocument();
   });
 
   it('renders loading state', () => {
@@ -71,7 +71,7 @@ describe('MvpSessionHistoryList', () => {
   it('renders completed session correctly', () => {
     render(<MvpSessionHistoryList sessions={[mockCompletedSession]} />);
 
-    expect(screen.getByText('Technical Interview Session')).toBeInTheDocument();
+    expect(screen.getByText('Interview Session')).toBeInTheDocument();
     expect(screen.getByText('Completed')).toBeInTheDocument();
     expect(screen.getByText('1 questions')).toBeInTheDocument();
     expect(screen.getByText('Duration: 15m')).toBeInTheDocument();
@@ -81,7 +81,7 @@ describe('MvpSessionHistoryList', () => {
   it('renders in-progress session correctly', () => {
     render(<MvpSessionHistoryList sessions={[mockInProgressSession]} />);
 
-    expect(screen.getByText('Technical Interview Session')).toBeInTheDocument();
+    expect(screen.getByText('Interview Session')).toBeInTheDocument();
     expect(screen.getByText('In Progress')).toBeInTheDocument();
     expect(screen.getByText('1 questions')).toBeInTheDocument();
     // Should not show duration for in-progress sessions

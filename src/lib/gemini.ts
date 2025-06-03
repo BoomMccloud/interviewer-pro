@@ -390,15 +390,15 @@ Generate only the next question, nothing else.`;
 //   throw new Error("Voice mode not available in this version.");
 
 /**
- * 🔵 REFACTOR Phase - Enhanced Implementation
- * Continues conversation within the same topic with analysis and follow-up questions.
- * Does NOT transition to new topics - purely conversational.
+ * 🔵 REFACTOR Phase - Truly Natural Conversation with Light Topic Guidance
+ * Trusts AI to handle conversation naturally with minimal interference.
  */
 export async function continueConversation(
   jdResumeText: JdResumeText,
   persona: Persona,
   history: MvpSessionTurn[],
-  userResponse: string
+  userResponse: string,
+  currentTopic?: string
 ): Promise<ConversationalResponse> {
   // Enhanced validation
   if (!userResponse || userResponse.trim().length === 0) {
@@ -410,17 +410,17 @@ export async function continueConversation(
   }
 
   try {
-    // Build enhanced conversational-only prompt
-    const contents = buildConversationalPrompt(jdResumeText, persona, history, userResponse);
+    // Build natural conversation prompt with light topic guidance
+    const contents = buildNaturalConversationPrompt(jdResumeText, persona, history, userResponse, currentTopic);
 
     const response = await genAI.models.generateContentStream({
       model: MODEL_NAME_TEXT,
       contents: contents,
       config: {
-        temperature: 0.7, // Good balance for conversational consistency
-        maxOutputTokens: 1200, // Increased for detailed analysis
-        topP: 0.9, // Focus on most likely responses
-        topK: 40, // Moderate diversity
+        temperature: 0.8, // Higher temperature for more natural, varied responses
+        maxOutputTokens: 400, // Shorter responses for more natural conversation
+        topP: 0.9,
+        topK: 40,
       },
     });
 
@@ -430,24 +430,26 @@ export async function continueConversation(
       throw new Error('AI returned empty response');
     }
 
-    // Enhanced conversational response parsing
-    const parsed = parseConversationalResponse(rawAiResponseText);
+    // ✨ TRUST THE AI - use its response directly with minimal processing
+    const naturalResponse = rawAiResponseText.trim();
 
-    // Validate response quality
-    if (!parsed.analysis || parsed.analysis.length < 10) {
-      console.warn('AI returned insufficient analysis, using fallback');
-      parsed.analysis = `Your response demonstrates understanding of the topic. Let's explore this further.`;
+    // Only use fallback if AI response is suspiciously short or generic
+    let finalResponse = naturalResponse;
+    if (naturalResponse.length < 10 || 
+        naturalResponse.toLowerCase().includes('tell me more about that') ||
+        naturalResponse.toLowerCase().includes('can you elaborate')) {
+      
+      // Generate a better contextual follow-up only as last resort
+      finalResponse = generateBetterContextualFollowUp(userResponse, currentTopic);
     }
 
-    if (!parsed.followUpQuestion || parsed.followUpQuestion.length < 10) {
-      console.warn('AI returned insufficient follow-up question, using fallback');
-      parsed.followUpQuestion = `Can you elaborate on that experience and share more specific details?`;
-    }
+    // Extract insights from user response for feedback
+    const insights = extractInsightsFromResponse(userResponse, currentTopic);
 
     return {
-      analysis: parsed.analysis,
-      feedbackPoints: parsed.feedbackPoints,
-      followUpQuestion: parsed.followUpQuestion,
+      analysis: `Your response shows engagement with the ${currentTopic ?? 'topic'}. Let's explore this further.`,
+      feedbackPoints: insights,
+      followUpQuestion: finalResponse, // ✅ Trust the AI (or smart fallback)
       rawAiResponseText: rawAiResponseText,
     };
 
@@ -762,4 +764,184 @@ function getFallbackKeyPoints(questionText: string): string[] {
     'Discuss challenges faced and solutions implemented',
     'Explain the impact of your work'
   ];
+}
+
+// Enhanced helper functions for natural conversation with light topic guidance
+
+function buildNaturalConversationPrompt(
+  jdResumeText: JdResumeText,
+  persona: Persona,
+  history: MvpSessionTurn[],
+  userResponse: string,
+  currentTopic?: string
+): Content[] {
+  const contents: Content[] = [];
+  
+  // Build conversation context from history (only recent turns to keep it focused)
+  const recentHistory = history.slice(-6); // Last 6 turns to keep context manageable
+  const conversationSoFar = recentHistory
+    .map(turn => `${turn.role === 'user' ? 'Candidate' : 'Interviewer'}: ${turn.text}`)
+    .join('\n');
+
+  const topicGuidance = currentTopic 
+    ? `Current conversation focus: ${currentTopic}`
+    : `No specific topic - explore naturally`;
+
+  const naturalPrompt = `You are a ${persona.name} having a natural, engaging interview conversation.
+
+${topicGuidance}
+
+Job they're applying for:
+${jdResumeText.jdText}
+
+Candidate's background:
+${jdResumeText.resumeText}
+
+Recent conversation:
+${conversationSoFar}
+
+Candidate just said: "${userResponse}"
+
+INSTRUCTIONS:
+- Respond naturally and conversationally, like a real interviewer would
+- Ask thoughtful, specific follow-up questions based on what they just shared
+- Show genuine curiosity about their experience
+- If they mention something interesting, dig deeper into that specific aspect
+- Keep responses concise and focused (1-2 sentences max)
+- Be encouraging and supportive
+- NO generic questions like "tell me more" or "can you elaborate"
+
+Respond with just your natural follow-up question or comment.`;
+
+  contents.push({
+    role: 'user',
+    parts: [{ text: naturalPrompt }],
+  });
+
+  return contents;
+}
+
+function generateBetterContextualFollowUp(
+  userResponse: string,
+  currentTopic?: string
+): string {
+  const response = userResponse.toLowerCase();
+  
+  // Analyze user response for specific concepts to ask about
+  if (response.includes('graduated') || response.includes('degree') || response.includes('university')) {
+    const followUps = [
+      "What skills from your studies are you most excited to apply in a professional setting?",
+      "How did your academic projects prepare you for real-world challenges?",
+      "What specific courses or experiences shaped your career interests?",
+      "Which professors or projects had the biggest impact on your learning?"
+    ];
+    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+  }
+
+  if (response.includes('mentor') || response.includes('junior') || response.includes('code review')) {
+    const followUps = [
+      "What's your approach when a junior developer disagrees with your feedback?",
+      "How do you balance being supportive with maintaining code quality standards?",
+      "What's the most challenging mentoring situation you've handled?",
+      "How do you help junior developers grow beyond just fixing their code?"
+    ];
+    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+  }
+
+  if (response.includes('party') || response.includes('fun') || response.includes('social')) {
+    const followUps = [
+      "How do you balance having fun with getting things done when working on projects?",
+      "What role does team culture and social interaction play in your ideal workplace?",
+      "How do you think your social skills contribute to team collaboration?",
+      "What does work-life balance mean to you?"
+    ];
+    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+  }
+
+  if (response.includes('project') || response.includes('built') || response.includes('developed')) {
+    const followUps = [
+      "What was the most unexpected challenge you encountered in that project?",
+      "How did you decide on the technical approach you used?",
+      "What would you change about your approach if you were starting over?",
+      "What's the most valuable lesson you learned from that experience?"
+    ];
+    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+  }
+
+  // Topic-specific intelligent questions
+  if (currentTopic?.toLowerCase().includes('team')) {
+    const followUps = [
+      "Tell me about a time when you had to convince teammates to try a different approach.",
+      "How do you handle situations where team members have conflicting ideas?",
+      "What's your strategy for building trust with new team members?",
+      "Describe how you've contributed to improving team processes."
+    ];
+    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+  }
+
+  if (currentTopic?.toLowerCase().includes('technical') || currentTopic?.toLowerCase().includes('react')) {
+    const followUps = [
+      "Walk me through how you approach debugging a complex technical issue.",
+      "What's your process for staying current with new technologies?",
+      "How do you balance writing clean code with meeting deadlines?",
+      "Tell me about a technical decision you're particularly proud of."
+    ];
+    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+  }
+
+  // Smart fallbacks based on response length and content
+  if (response.length < 20) {
+    const shortResponseFollowUps = [
+      "Could you paint me a clearer picture of that situation?",
+      "What context would help me understand that better?",
+      "I'd love to hear more specifics about what that looked like.",
+      "Can you walk me through what actually happened there?"
+    ];
+    return shortResponseFollowUps[Math.floor(Math.random() * shortResponseFollowUps.length)] || shortResponseFollowUps[0];
+  }
+
+  // Thoughtful generic fallbacks (much better than the old ones)
+  const smartGenericFollowUps = [
+    "What made that experience particularly meaningful to you?",
+    "How has that shaped your professional perspective?",
+    "What surprised you most about that situation?",
+    "What skills did you develop through that experience?"
+  ];
+  
+  return smartGenericFollowUps[Math.floor(Math.random() * smartGenericFollowUps.length)] || smartGenericFollowUps[0];
+}
+
+function extractInsightsFromResponse(userResponse: string, currentTopic?: string): string[] {
+  const insights: string[] = [];
+  const response = userResponse.toLowerCase();
+
+  // Extract positive indicators
+  if (response.includes('challenge') || response.includes('difficult')) {
+    insights.push("Shows willingness to tackle challenging problems");
+  }
+  
+  if (response.includes('team') || response.includes('collaborate')) {
+    insights.push("Demonstrates collaborative approach");
+  }
+  
+  if (response.includes('learn') || response.includes('research')) {
+    insights.push("Shows continuous learning mindset");
+  }
+
+  if (response.includes('improve') || response.includes('optimize')) {
+    insights.push("Focuses on improvement and optimization");
+  }
+
+  // Topic-specific insights
+  if (currentTopic) {
+    insights.push(`Demonstrates knowledge relevant to ${currentTopic}`);
+  }
+
+  // Default insights if none detected
+  if (insights.length === 0) {
+    insights.push("Provides relevant examples from experience");
+    insights.push("Shows practical understanding of the topic");
+  }
+
+  return insights.slice(0, 3); // Keep it concise
 }

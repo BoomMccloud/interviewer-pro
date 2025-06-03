@@ -74,7 +74,7 @@ export default function MvpSessionHistoryList({
     return (
       <div className="text-center py-8 text-gray-500">
         <p className="text-lg">No interview sessions yet</p>
-        <p className="text-sm">Start your first technical interview to see sessions here</p>
+        <p className="text-sm">Start your first interview to see sessions here</p>
       </div>
     );
   }
@@ -91,7 +91,7 @@ export default function MvpSessionHistoryList({
           <div className="flex justify-between items-start mb-2">
             <div>
               <h3 className="font-medium text-gray-900">
-                Technical Interview Session
+                Interview Session
               </h3>
               <p className="text-sm text-gray-600">
                 {formatDate(session.startTime)}

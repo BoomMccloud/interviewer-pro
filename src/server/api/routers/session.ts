@@ -746,6 +746,24 @@ export const sessionRouter = createTRPCRouter({
         }
       }
 
+      // Extract current topic from the most recent topic transition
+      let currentTopic: string | undefined;
+      for (let i = history.length - 1; i >= 0; i--) {
+        const turn = history[i];
+        if (turn && turn.role === 'model' && turn.type === 'topic_transition' && turn.rawAiResponseText) {
+          // Extract topic from question - simple keyword detection
+          const question = turn.text.toLowerCase();
+          if (question.includes('react')) currentTopic = 'React development';
+          else if (question.includes('typescript')) currentTopic = 'TypeScript';
+          else if (question.includes('node') || question.includes('backend')) currentTopic = 'Backend development';
+          else if (question.includes('team') || question.includes('leadership')) currentTopic = 'Team collaboration';
+          else if (question.includes('system') || question.includes('design')) currentTopic = 'System design';
+          else if (question.includes('problem') || question.includes('challenge')) currentTopic = 'Problem solving';
+          else currentTopic = 'General interview discussion';
+          break;
+        }
+      }
+
       // Add user response to history
       const userTurn: MvpSessionTurn = {
         id: `turn-${Date.now()}-user`,
@@ -764,12 +782,13 @@ export const sessionRouter = createTRPCRouter({
         });
       }
 
-      // 🔗 Use separated continueConversation function - NO topic transitions
+      // 🔗 Use separated continueConversation function - NO topic transitions, WITH light topic guidance
       const conversationalResponse = await continueConversation(
         session.jdResumeText,
         persona,
         history,
-        input.userResponse
+        input.userResponse,
+        currentTopic // Pass current topic for light guidance
       );
 
       // Create conversational AI turn for chat history

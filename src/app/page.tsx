@@ -32,7 +32,7 @@ export default async function Home() {
             AI Interview Pro
           </h1>
           <p className="text-2xl text-white text-center">
-            Prepare for your technical interviews with AI. Sign in to continue.
+            Prepare for your interviews with AI. Sign in to continue.
           </p>
           <div className="flex flex-col items-center justify-center gap-4">
             <Link

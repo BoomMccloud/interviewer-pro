@@ -165,7 +165,7 @@ describe('DashboardPage', () => {
     expect(screen.getByLabelText('Job Description')).toBeInTheDocument();
     expect(screen.getByLabelText('Resume')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /save text/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /start technical interview/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start interview/i })).toBeInTheDocument();
     
     // Check session history
     expect(screen.getByText('No interview sessions yet')).toBeInTheDocument();
