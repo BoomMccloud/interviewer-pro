@@ -119,6 +119,48 @@ export const zodMvpSessionTurn = z.object({
 
 export const zodMvpSessionTurnArray = z.array(zodMvpSessionTurn);
 
+// NEW: QuestionSegments Structure for Phase 3C Migration
+// Represents a single conversation turn within a question segment
+export interface ConversationTurn {
+  role: 'ai' | 'user';
+  content: string;
+  timestamp: string;
+  messageType: 'question' | 'response';
+}
+
+// Represents a complete question segment with its conversation history
+export interface QuestionSegment {
+  questionId: string;           // "q1_opening", "q2_topic1", "q3_behavioral"
+  questionNumber: number;       // 1, 2, 3...
+  questionType: 'opening' | 'technical' | 'behavioral' | 'followup';
+  question: string;             // The actual question text
+  keyPoints: string[];          // Array of guidance points
+  startTime: string;            // ISO timestamp when question started
+  endTime: string | null;       // ISO timestamp when completed, null if active
+  conversation: ConversationTurn[]; // Chat history for this specific question
+}
+
+// Zod schemas for QuestionSegments structure
+export const zodConversationTurn = z.object({
+  role: z.enum(['ai', 'user']),
+  content: z.string(),
+  timestamp: z.string(),
+  messageType: z.enum(['question', 'response']),
+});
+
+export const zodQuestionSegment = z.object({
+  questionId: z.string(),
+  questionNumber: z.number().int(),
+  questionType: z.enum(['opening', 'technical', 'behavioral', 'followup']),
+  question: z.string(),
+  keyPoints: z.array(z.string()),
+  startTime: z.string(),
+  endTime: z.string().nullable(),
+  conversation: z.array(zodConversationTurn),
+});
+
+export const zodQuestionSegmentArray = z.array(zodQuestionSegment);
+
 // Current MVP AI Response (from continueInterview - will be deprecated)
 export interface MvpAiResponse {
   nextQuestion: string;
@@ -287,10 +329,14 @@ export interface ActiveSessionData {
   status: 'created' | 'active' | 'paused' | 'completed' | 'abandoned';
   personaId: string;
   currentQuestion: string;
+  keyPoints: string[];                      // NEW: Key points for current question
   questionNumber: number;
   totalQuestions: number;
   timeRemaining: number; // in seconds
-  conversationHistory: MvpSessionTurn[];
+  conversationHistory: ConversationTurn[];  // NEW: Current question's conversation using new structure
+  questionSegments: QuestionSegment[];      // NEW: All question segments
+  currentQuestionIndex: number;             // NEW: Which question is active
+  canProceedToNextTopic: boolean;           // NEW: Whether user can advance to next topic
   startTime: Date;
   lastActivityTime: Date;
   endTime?: Date;
@@ -384,10 +430,14 @@ export const zodActiveSessionData = z.object({
   status: z.enum(['created', 'active', 'paused', 'completed', 'abandoned']),
   personaId: z.string(),
   currentQuestion: z.string(),
-  questionNumber: z.number().int().positive(),
-  totalQuestions: z.number().int().positive(),
-  timeRemaining: z.number().int().min(0),
-  conversationHistory: z.array(zodMvpSessionTurn),
+  keyPoints: z.array(z.string()),
+  questionNumber: z.number().int(),
+  totalQuestions: z.number().int(),
+  timeRemaining: z.number().int(),
+  conversationHistory: z.array(zodConversationTurn),
+  questionSegments: z.array(z.any()), // This gets replaced below
+  currentQuestionIndex: z.number().int(),
+  canProceedToNextTopic: z.boolean(),
   startTime: z.date(),
   lastActivityTime: z.date(),
   endTime: z.date().optional(),

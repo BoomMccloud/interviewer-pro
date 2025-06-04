@@ -4,10 +4,22 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
-import { continueInterview, getFirstQuestion, continueConversation, getNewTopicalQuestion } from "~/lib/gemini";
+import { continueInterview, getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from "~/lib/gemini";
 import { getPersona } from "~/lib/personaService";
-import type { MvpSessionTurn, SessionReportData, SessionAnalyticsData, SessionFeedbackData } from "~/types";
-import { zodMvpSessionTurnArray, zodPersonaId, PERSONA_IDS } from "~/types";
+import type { 
+  MvpSessionTurn, 
+  SessionReportData, 
+  SessionAnalyticsData, 
+  SessionFeedbackData,
+  QuestionSegment,
+  ConversationTurn
+} from "~/types";
+import { 
+  zodMvpSessionTurnArray, 
+  zodPersonaId, 
+  PERSONA_IDS,
+  zodQuestionSegmentArray,
+} from "~/types";
 import type { Prisma } from '@prisma/client'; // Changed to type import
 import { TRPCError } from "@trpc/server";
 
@@ -654,52 +666,60 @@ export const sessionRouter = createTRPCRouter({
         });
       }
 
-      // ✨ NEW: Use the shared question generation helper function with randomization
-      // This ensures consistency between standalone and session-based question generation
-      // and prevents duplicate questions across sessions
-      const questionTypes = ['opening', 'technical', 'behavioral'] as const;
-      const randomQuestionType = questionTypes[Math.floor(Math.random() * questionTypes.length)];
+      // Generate first question using AI service
+      const questionResult = await getFirstQuestion(session.jdResumeText, persona);
       
-      const questionGenerationResult = await generateQuestionForSession(
-        session.jdResumeTextId,
-        input.personaId,
-        randomQuestionType, // Now randomized instead of always 'opening'
-        ctx.session.user.id
-      );
-      
-      // Create the first AI turn and save to database
-      const aiTurn: MvpSessionTurn = {
-        id: `turn-${Date.now()}-model`,
-        role: "model",
-        text: questionGenerationResult.question,
-        rawAiResponseText: questionGenerationResult.rawAiResponse,
-        timestamp: new Date(),
+      // Create first question segment
+      const firstQuestionSegment: QuestionSegment = {
+        questionId: "q1_opening",
+        questionNumber: 1,
+        questionType: "opening",
+        question: questionResult.questionText,
+        keyPoints: [], // Will be extracted from AI response
+        startTime: new Date().toISOString(),
+        endTime: null, // Active question
+        conversation: [
+          {
+            role: "ai",
+            content: questionResult.questionText,
+            timestamp: new Date().toISOString(),
+            messageType: "question"
+          }
+        ]
       };
 
-      // Update session with the first AI question in history
-      const historyForDb = [aiTurn].map(turn => ({
-        ...turn,
-        timestamp: turn.timestamp.toISOString()
-      })) as Prisma.InputJsonValue;
-
+      // Extract key points from AI response
+      try {
+        const parsedResponse = parseAiResponse(questionResult.rawAiResponseText);
+        firstQuestionSegment.keyPoints = parsedResponse.keyPoints;
+      } catch (error) {
+        console.error("Failed to parse AI response for key points:", error);
+        // Use fallback key points
+        firstQuestionSegment.keyPoints = [
+          "Focus on your specific role and contributions",
+          "Highlight technologies and tools you used", 
+          "Discuss challenges faced and how you overcame them"
+        ];
+      }
+      
+      // Update session with question segments
       await ctx.db.sessionData.update({
         where: { id: input.sessionId },
         data: { 
-          history: historyForDb,
-          startTime: new Date() // Also set the start time
+          questionSegments: [firstQuestionSegment],
+          currentQuestionIndex: 0,
+          startTime: new Date()
         },
       });
       
       return {
         sessionId: input.sessionId,
-        isActive: true, // endTime === null indicates active session
+        isActive: true,
         personaId: input.personaId,
-        currentQuestion: questionGenerationResult.question,
-        keyPoints: questionGenerationResult.keyPoints,
+        currentQuestion: questionResult.questionText,
+        keyPoints: firstQuestionSegment.keyPoints,
         questionNumber: 1,
-        totalQuestions: 10, // Default total questions for interview
-        timeRemaining: session.durationInSeconds ?? 3600, // Use session configuration
-        conversationHistory: [],
+        conversationHistory: firstQuestionSegment.conversation,
       };
     }),
 
@@ -1277,79 +1297,249 @@ export const sessionRouter = createTRPCRouter({
         });
       }
 
-      // Parse existing conversation history
-      let history: MvpSessionTurn[] = [];
-      if (session.history) {
+      // Parse question segments
+      let questionSegments: QuestionSegment[] = [];
+      if (session.questionSegments) {
         try {
-          history = zodMvpSessionTurnArray.parse(session.history);
+          questionSegments = zodQuestionSegmentArray.parse(session.questionSegments);
         } catch (error) {
-          console.error("Failed to parse session history:", error);
-          // If history is corrupted, start fresh
-          history = [];
+          console.error("Failed to parse question segments:", error);
+          // If questionSegments is corrupted, start fresh
+          questionSegments = [];
         }
       }
 
-      // Convert history to frontend format - Include conversational responses in chat history
-      // but exclude topic transitions and pause entries (those are not part of the conversation)
-      const conversationHistory = history
-        .filter(turn => {
-          // Include user responses (except pause entries) and AI conversational responses (but not topic transitions)
-          return (turn.role === 'user' && turn.type !== 'pause') || 
-                 (turn.role === 'model' && turn.type === 'conversational');
-        })
-        .map(turn => ({
-          role: turn.role === 'user' ? 'user' as const : 'ai' as const,
-          content: turn.text,
-          timestamp: typeof turn.timestamp === 'string' ? turn.timestamp : turn.timestamp.toISOString(),
-        }));
+      const currentQuestionIndex = session.currentQuestionIndex;
+      const currentQuestion = questionSegments[currentQuestionIndex];
 
-      // Find the most recent AI topic transition for currentQuestion
-      const lastTopicTransition = history
-        .filter(turn => turn.role === 'model' && (!turn.type || turn.type === 'topic_transition'))
-        .pop();
-
-      // Determine current question and extract key points
-      let currentQuestion = 'Loading...';
-      let keyPoints: string[] = [];
-      let questionNumber = 1;
-
-      if (lastTopicTransition) {
-        currentQuestion = lastTopicTransition.text;
-        questionNumber = history.filter(turn => turn.role === 'model' && (!turn.type || turn.type === 'topic_transition')).length;
-        
-        // Extract key points from the AI response if available
-        if (lastTopicTransition.rawAiResponseText) {
-          try {
-            const { parseAiResponse } = await import('~/lib/gemini');
-            const parsedResponse = parseAiResponse(lastTopicTransition.rawAiResponseText);
-            keyPoints = parsedResponse.keyPoints ?? [];
-          } catch (error) {
-            console.error("Failed to parse AI response for key points:", error);
-            // Use fallback key points
-            keyPoints = [
-              "Focus on your specific role and contributions",
-              "Highlight technologies and tools you used", 
-              "Discuss challenges faced and how you overcame them"
-            ];
-          }
-        }
-      } else {
-        // No topic transitions yet - this is a brand new session that needs to be started
-        currentQuestion = 'Interview not started yet. Please start the interview.';
-        questionNumber = 0;
-        keyPoints = [];
+      if (!currentQuestion) {
+        return {
+          sessionId: input.sessionId,
+          isActive: session.endTime === null,
+          personaId: session.personaId,
+          currentQuestion: 'Interview not started yet. Please start the interview.',
+          keyPoints: [],
+          conversationHistory: [],
+          questionNumber: 0,
+          totalQuestions: questionSegments.length,
+          canProceedToNextTopic: false,
+        };
       }
 
       return {
         sessionId: input.sessionId,
         isActive: session.endTime === null, // endTime === null means active
         personaId: session.personaId,
-        currentQuestion,
-        keyPoints,
-        conversationHistory,
-        questionNumber,
-        timeRemaining: session.durationInSeconds ?? 1800, // Use actual duration or default
+        currentQuestion: currentQuestion.question,
+        keyPoints: currentQuestion.keyPoints,
+        conversationHistory: currentQuestion.conversation,
+        questionNumber: currentQuestion.questionNumber,
+        totalQuestions: questionSegments.length,
+        canProceedToNextTopic: currentQuestion.conversation.length >= 4, // Less than 4 conversation turns
       };
+    }),
+
+  // =============================================================================
+  // 🟢 NEW QUESTION SEGMENTS PROCEDURES - TDD GREEN PHASE IMPLEMENTATION
+  // =============================================================================
+
+  // NEW: submitResponse procedure for QuestionSegments structure
+  submitResponse: protectedProcedure
+    .input(z.object({
+      sessionId: z.string(),
+      userResponse: z.string().min(1).trim(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Fetch session with validation
+      const session = await ctx.db.sessionData.findUnique({
+        where: { id: input.sessionId },
+        include: { jdResumeText: true }
+      });
+
+      if (!session || session.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+      }
+
+      // Parse question segments
+      const questionSegments = zodQuestionSegmentArray.parse(session.questionSegments);
+      const currentQuestionIndex = session.currentQuestionIndex;
+      const currentQuestion = questionSegments[currentQuestionIndex];
+
+      if (!currentQuestion) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'No active question' });
+      }
+
+      // Add user response to current question's conversation
+      const userTurn: ConversationTurn = {
+        role: "user",
+        content: input.userResponse,
+        timestamp: new Date().toISOString(),
+        messageType: "response"
+      };
+
+      currentQuestion.conversation.push(userTurn);
+
+      // Get AI response (conversational follow-up, not new topic)
+      const persona = await getPersona(session.personaId);
+      if (!persona) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Persona not found' });
+      }
+
+      // Convert QuestionSegment conversation to MvpSessionTurn format for AI service
+      const historyForAI: MvpSessionTurn[] = currentQuestion.conversation.map((turn, _index) => ({
+        id: `turn-${turn.timestamp}-${turn.role}`,
+        role: turn.role === 'ai' ? 'model' : 'user',
+        text: turn.content,
+        timestamp: new Date(turn.timestamp),
+        rawAiResponseText: turn.role === 'ai' ? turn.content : undefined,
+      }));
+
+      const aiResponse = await continueConversation(
+        session.jdResumeText,
+        persona,
+        historyForAI,
+        input.userResponse
+      );
+
+      // Add AI conversational response
+      const aiTurn: ConversationTurn = {
+        role: "ai",
+        content: aiResponse.followUpQuestion,
+        timestamp: new Date().toISOString(),
+        messageType: "response"
+      };
+
+      currentQuestion.conversation.push(aiTurn);
+
+      // Update database
+      await ctx.db.sessionData.update({
+        where: { id: input.sessionId },
+        data: { questionSegments: questionSegments }
+      });
+
+      return {
+        conversationResponse: aiResponse.followUpQuestion,
+        conversationHistory: currentQuestion.conversation,
+        canProceedToNextTopic: currentQuestion.conversation.length >= 4, // 2+ exchanges
+      };
+    }),
+
+  // NEW: getNextTopicalQuestion procedure for QuestionSegments structure  
+  getNextTopicalQuestion: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Fetch session with validation
+      const session = await ctx.db.sessionData.findUnique({
+        where: { id: input.sessionId },
+        include: { jdResumeText: true }
+      });
+
+      if (!session || session.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+      }
+
+      const questionSegments = zodQuestionSegmentArray.parse(session.questionSegments);
+      const currentQuestionIndex = session.currentQuestionIndex;
+
+      // Mark current question as completed
+      const currentQuestion = questionSegments[currentQuestionIndex];
+      if (currentQuestion) {
+        currentQuestion.endTime = new Date().toISOString();
+      }
+
+      // Get persona
+      const persona = await getPersona(session.personaId);
+      if (!persona) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Persona not found' });
+      }
+
+      // Convert question segments to legacy format for AI service
+      const historyForAI: MvpSessionTurn[] = [];
+      for (const segment of questionSegments) {
+        for (const turn of segment.conversation) {
+          historyForAI.push({
+            id: `turn-${turn.timestamp}-${turn.role}`,
+            role: turn.role === 'ai' ? 'model' : 'user',
+            text: turn.content,
+            timestamp: new Date(turn.timestamp),
+            rawAiResponseText: turn.role === 'ai' ? turn.content : undefined,
+          });
+        }
+      }
+
+      // Generate next topical question
+      const nextQuestionNumber = currentQuestionIndex + 2;
+      const newTopicalQuestion = await getNewTopicalQuestion(
+        session.jdResumeText,
+        persona,
+        historyForAI, // Pass all previous conversation for context
+        [] // No covered topics tracking yet - can be enhanced later
+      );
+
+      // Create new question segment
+      const newQuestionSegment: QuestionSegment = {
+        questionId: `q${nextQuestionNumber}_topic${nextQuestionNumber - 1}`,
+        questionNumber: nextQuestionNumber,
+        questionType: "technical", // or determine based on context
+        question: newTopicalQuestion.questionText,
+        keyPoints: newTopicalQuestion.keyPoints,
+        startTime: new Date().toISOString(),
+        endTime: null,
+        conversation: [
+          {
+            role: "ai",
+            content: newTopicalQuestion.questionText,
+            timestamp: new Date().toISOString(),
+            messageType: "question"
+          }
+        ]
+      };
+
+      questionSegments.push(newQuestionSegment);
+      const newQuestionIndex = currentQuestionIndex + 1;
+
+      // Update database
+      await ctx.db.sessionData.update({
+        where: { id: input.sessionId },
+        data: { 
+          questionSegments: questionSegments,
+          currentQuestionIndex: newQuestionIndex
+        }
+      });
+
+      return {
+        questionText: newTopicalQuestion.questionText,
+        keyPoints: newTopicalQuestion.keyPoints,
+        questionNumber: nextQuestionNumber,
+        conversationHistory: newQuestionSegment.conversation,
+      };
+    }),
+
+  // NEW: saveSession procedure for QuestionSegments structure
+  saveSession: protectedProcedure
+    .input(z.object({
+      sessionId: z.string(),
+      currentResponse: z.string().optional()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Fetch session with validation
+      const session = await ctx.db.sessionData.findUnique({
+        where: { id: input.sessionId }
+      });
+
+      if (!session || session.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+      }
+
+      // For save, we don't modify conversation history
+      // Just update the lastActivityTime or add a save marker if needed
+      
+      await ctx.db.sessionData.update({
+        where: { id: input.sessionId },
+        data: { updatedAt: new Date() }
+      });
+
+      return { saved: true, timestamp: new Date() };
     }),
 });
 

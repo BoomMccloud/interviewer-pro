@@ -2,8 +2,8 @@
 
 This document tracks the current progress and detailed tasks for the active development phase.
 
-**⚠️ ARCHITECTURAL CORRECTION NOTICE:**
-During Phase 1 development, we discovered a critical architectural mismatch: the planning documents assumed REST API patterns, but the codebase is actually built with **tRPC for type-safe, end-to-end APIs**. All components have been successfully migrated to use tRPC hooks, and planning documents have been corrected.
+**⚠️ CRITICAL DATABASE SCHEMA DISCOVERY:**
+During Phase 3C development, we discovered that the current code expects a `history` field in SessionData, but the actual database uses a superior `questionSegments` + `currentQuestionIndex` structure. This structure is actually **better aligned** with our Phase 3C goal of user-controlled topic transitions. We are now migrating the code to match the correct database schema.
 
 ## Previous Phase Completions
 
@@ -34,350 +34,117 @@ During Phase 1 development, we discovered a critical architectural mismatch: the
 - ✅ **Type Safety**: End-to-end TypeScript validation with proper error handling
 - ✅ **Production Quality**: Clean, documented, maintainable code ready for frontend integration
 
-## Phase 3: Interview Simulation UI & Live Interaction - **🔧 IN PROGRESS**
-
-**Goal:** Build the core interview experience where users conduct real-time AI-powered mock interviews with dynamic question/answer flow, multi-modal interaction, and session management.
-
-**Status: ✅ Phase 3A COMPLETED → ✅ Phase 3B Frontend Implementation COMPLETED → 🔧 Phase 3C MVP UX Refinement IN PROGRESS**
-
-### **🎯 Phase 3 Objectives**
-
-**Core Features:**
-- **Live Interview Interface**: Real-time Q&A flow with AI interviewer at `/sessions/[id]?mode={text|voice|avatar}`
-- **Multi-Modal Support**: Parameter-based mode selection with text, voice, and avatar interfaces
-- **Session Management**: Timer, progress tracking, session state persistence
-- **AI Response Generation**: Dynamic question generation and response evaluation
-- **Persona System**: Multiple interviewer personalities and interview styles
-- **Session Controls**: Start, pause, resume, end session functionality
-
-**User Value:**
-- Conduct realistic mock interviews with AI-powered interviewers
-- Practice responses in real-time with immediate AI feedback
-- Experience different interview modalities based on preferences and purchases
-- Build confidence through repeated practice sessions
-- Track progress and improvement across multiple sessions
-
----
-
-## **✅ COMPLETED: Phase 3A - Backend Foundation (TDD SUCCESS)**
-
-### **🎯 TDD Implementation - 100% SUCCESS**
-
-**Implementation Approach:** Complete Test-Driven Development (RED → GREEN → REFACTOR)
-
-**🎉 FINAL TDD STATUS: 11/11 TESTS PASSING (100% COMPLETE)**
-- ✅ **RED Phase Complete**: All tests initially failing as expected
-- ✅ **GREEN Phase Complete**: All tests passing with minimal implementations
-- ✅ **REFACTOR Phase Complete**: Production-ready code with full business logic
-
-**✅ PRODUCTION-READY tRPC Procedures:**
-
-```typescript
-// ✅ COMPLETE: Full authentication, AI integration, and persona service
-startInterviewSession: protectedProcedure
-  .input(z.object({ sessionId: z.string(), personaId: z.string() }))
-  .mutation(async ({ ctx, input }) => {
-    // ✅ Complete auth validation and session verification
-    // ✅ Real persona service integration with error handling
-    // ✅ Real Gemini AI integration for first question generation
-    // ✅ Business logic validation (completed sessions, etc.)
-    return { sessionId, isActive: true, currentQuestion, ... };
-  });
-
-// ✅ COMPLETE: Full conversation management and AI integration
-getNextQuestion: protectedProcedure
-  .input(z.object({ sessionId: z.string(), userResponse: z.string() }))
-  .mutation(async ({ ctx, input }) => {
-    // ✅ Complete conversation history management
-    // ✅ Real AI service calls for next question generation
-    // ✅ Session completion detection and automatic ending
-    // ✅ Database updates with conversation persistence
-    return { nextQuestion, questionNumber, isComplete, ... };
-  });
-
-// ✅ COMPLETE: Full state management with history persistence
-updateSessionState: protectedProcedure
-  .input(z.object({ 
-    sessionId: z.string(),
-    action: z.enum(['pause', 'resume', 'end']),
-    currentResponse: z.string().optional()
-  }))
-  .mutation(async ({ ctx, input }) => {
-    // ✅ Complete pause state persistence in session history
-    // ✅ Resume functionality with state restoration
-    // ✅ End session with proper database updates
-    return { isPaused, isCompleted, lastActivityTime, ... };
-  });
-
-// ✅ COMPLETE: Full session recovery with conversation history
-getActiveSession: protectedProcedure
-  .input(z.object({ sessionId: z.string() }))
-  .query(async ({ ctx, input }) => {
-    // ✅ Complete session state retrieval
-    // ✅ Real conversation history management
-    // ✅ Proper authorization and error handling
-    return { sessionId, isActive, conversationHistory, ... };
-  });
-
-// ✅ COMPLETE: Dedicated question generation API
-generateInterviewQuestion: protectedProcedure
-  .input(z.object({
-    jdResumeTextId: z.string(),
-    personaId: z.string(),
-    questionType: z.enum(['opening', 'technical', 'behavioral', 'followup']).optional()
-  }))
-  .query(async ({ ctx, input }) => {
-    // ✅ Complete standalone question generation
-    // ✅ Modality-agnostic API design
-    // ✅ Structured response with question, keyPoints, metadata
-    return { question, keyPoints, metadata, personaId, questionType, ... };
-  });
-```
-
----
-
-## **✅ COMPLETED: Phase 3B Frontend Implementation**
-
-**Status: ✅ COMPLETE - Full Production Interview System Working**
-
-### **✅ COMPLETED: UI Implementation & Testing**
-
-**✅ UI Components Complete:**
-- **TextInterviewUI** - Complete conversation interface with full functionality
-- **VoiceInterviewUI** - Voice recording interface with processing states  
-- **Timer Integration** - Elapsed time tracking with proper header alignment
-- **Header Updates** - "Current Question:" label, key points with bullet format
-- **Visual Polish** - Removed timestamps, improved spacing and alignment
-
-**✅ Testing Results:**
-- **TextInterviewUI Tests: 13/13 PASSING** ✅
-  - Component API and Props ✅
-  - User Workflow (message submission, clearing) ✅
-  - State Management (processing states, conversation history) ✅
-  - Session Control Actions (pause/end) ✅
-  - Keyboard Shortcuts (Ctrl+Enter) ✅
-  - Error Handling ✅
-- **VoiceInterviewUI Tests: 13/18 PASSING** 🚧
-  - Core functionality working ✅
-  - 5 tests failing due to missing recording workflow states (send recording, retry, state transitions)
-  - **Note:** VoiceInterviewUI completion deferred - will address after TextInterviewUI tRPC integration
-
-### **✅ COMPLETED: tRPC Integration for TextInterviewUI**
-
-**Status: ✅ INTEGRATION COMPLETE - Smart Session Management Implemented**
-
-**✅ Full Interview Flow Implemented:**
-- **Session Initialization**: `startInterviewSession` called on page load with persona
-- **Real-time Questions**: `getNextQuestion` processes user responses and generates next questions  
-- **Session Recovery**: `getActiveSession` handles page refresh and continuation
-- **Data Persistence**: All conversation history stored in `SessionData.history` JSON field
-- **Loading States**: Proper loading indicators during AI processing
-- **Error Handling**: Try-catch blocks for all tRPC mutations
-
-**✅ RESOLVED: Smart Session State Management**
-
-**Problem Fixed:** Multiple failed session starts when users try to access completed sessions
-
-**Solution Implemented:**
-```typescript
-type SessionState = 'loading' | 'new' | 'active' | 'completed' | 'error';
-
-// State machine logic:
-1. 'loading' → Initial page load, checking session status
-2. 'new' → Session doesn't exist, auto-start new interview
-3. 'active' → Session in progress, show interview UI
-4. 'completed' → Session finished, show user options:
-   - "View Interview Report" → Navigate to /sessions/[id]/report
-   - "Start New Interview" → Reset session and restart
-5. 'error' → Handle failures gracefully, return to dashboard
-```
-
-**Key UX Improvements:**
-- **No More Infinite Loops**: Proper state management prevents retry loops
-- **User Choice on Completion**: Clear options when session already finished
-- **Graceful Error Handling**: Meaningful error states with recovery options
-- **Session Restart Support**: Users can restart completed sessions with same JD/Resume
-- **Visual Feedback**: Loading states, completion indicators, error messages
-
-**✅ Complete Data Flow:**
-1. **Page Load** → `getActiveSession.useQuery({ sessionId })`
-2. **Session Start** → `startInterviewSession.mutate({ sessionId, personaId })`
-   - Fetches JdResumeText + persona config
-   - Calls `getFirstQuestion(jdResumeText, persona)` 
-   - Returns: `{ currentQuestion, conversationHistory: [], questionNumber: 1 }`
-3. **User Response** → `getNextQuestion.mutate({ sessionId, userResponse })`
-   - Adds user message to `history` JSON array
-   - Calls `continueInterview(jdResumeText, persona, history, userResponse)`
-   - LLM generates: next question + analysis + feedback
-   - Updates `SessionData.history` in database
-   - Auto-completes when interview finished (sets `endTime`)
-
-**✅ Integration Code Complete:**
-- Real tRPC calls replace all mock handlers
-- Smart session state management with proper error recovery
-- Loading states connected to mutation status
-- Automatic session recovery on page refresh
-- Error handling for network issues
-- User-friendly completion and restart flows
-- Navigation to report page on completion
-
-### **✅ COMPLETED: Dedicated Question Generation API**
-
-**Status: ✅ COMPLETE - Modality-Agnostic Question Generation Working**
-
-**✅ API Implementation Complete:**
-- **generateInterviewQuestion tRPC procedure**: Independent of sessions, pure question generation
-- **GeneratedQuestion interface**: Structured response with question, keyPoints, metadata
-- **Question type categories**: opening, technical, behavioral, followup
-- **Metadata support**: difficulty, estimated time, tags
-- **Test page implementation**: `/test-question-api` for API demonstration
-
-**✅ RESOLVED: React Hook Error**
-
-**Problem Fixed:** "Invalid hook call" error when `useQuery` was called inside event handler
-
-**Solution Implemented:**
-```typescript
-// Fixed approach - useQuery at component top level
-const generateQuestionQuery = api.session.generateInterviewQuestion.useQuery(
-  { jdResumeTextId, personaId, questionType },
-  { enabled: false } // Don't auto-fetch
-);
-
-// Use refetch() in event handler instead of calling useQuery
-const handleGenerateQuestion = async () => {
-  const result = await generateQuestionQuery.refetch();
-  if (result.data) {
-    setQuestion(result.data);
-  }
-};
-```
-
-**✅ Test Page Features:**
-- **Working question generation**: Real AI-powered questions from user's JD/Resume
-- **Visual feedback**: Loading states, error handling, structured response display
-- **Metadata display**: Question difficulty, estimated time, tags
-- **Key points extraction**: Properly formatted key points from AI response
-- **React hook compliance**: Proper hook usage patterns
-
-**Impact:** Provides a modality-agnostic question generation API that can be used across text, voice, and avatar interview modes.
-
----
-
-## **🔧 IN PROGRESS: Phase 3C MVP UX Refinement**
-
-**Status: 🔧 Phase 3C Active - Implementing user-controlled topic transitions for polished MVP UX**
-
-### **✅ COMPLETED: Session Control & Save Functionality**
-
-**Problem Resolved:** Save/Pause button functionality was causing empty chat bubbles and UX confusion
-
-**✅ Save Functionality Implementation:**
-- **Terminology Correction**: Changed "Pause" → "Save" to accurately reflect checkpoint behavior
-- **Empty Bubble Fix**: Updated conversation history filter to exclude pause entries from chat display
-- **Server Validation**: Added input validation to prevent empty responses (`z.string().min(1).trim()`)
-- **UI State Management**: Proper loading states and button styling for save operations
-- **Type Safety**: Updated interfaces and props for new save terminology
-
-**✅ Technical Implementation:**
-```typescript
-// Backend - Save creates checkpoint without disrupting chat
-const pauseEntry: MvpSessionTurn = {
-  id: `pause-${Date.now()}`,
-  role: "user",
-  text: input.currentResponse ?? '',
-  type: 'pause', // Special marker
-  timestamp: new Date(),
-};
-
-// Frontend - History filtering excludes pause entries
-const conversationHistory = history
-  .filter(turn => {
-    return (turn.role === 'user' && turn.type !== 'pause') || 
-           (turn.role === 'model' && turn.type === 'conversational');
-  })
-```
-
-**✅ UX Improvements:**
-- **Clear Save Behavior**: Users understand "Save" preserves progress vs "Pause" implying need to resume
-- **Clean Chat History**: Save operations don't clutter conversation with empty bubbles
-- **Proper Button States**: Loading states show "Saving..." and disabled styling when not available
-- **End Interview Protection**: Confirmation dialog prevents accidental session termination
-
-### **🎯 NEXT FOCUS: User-Controlled Topic Transitions**
-
-**Current Challenge:** AI randomly switches between conversational responses and new topical questions, giving users no control over interview flow.
-
-**MVP Solution Design:** User-controlled topic transitions with clear separation of concerns:
-
-```
-Target Interview Flow:
-1. AI gives topical question → "Current Question" section
-2. User responds → Chat
-3. AI gives conversational follow-up → Chat  
-4. User responds → Chat
-5. [After 2 exchanges] "Next Question" button becomes available
-6. User clicks "Next Question" → New topical question appears
-```
-
----
-
-## **🎯 Current Development Status**
-
-**✅ PHASE 3A & 3B COMPLETE:**
-- ✅ **Backend Foundation**: 5 production-ready procedures (11/11 tests passing + question generation API)
-- ✅ **AI Integration**: Full Gemini integration with real conversation flow and standalone question generation
-- ✅ **Session Management**: Complete lifecycle with pause/resume/end functionality
-- ✅ **Frontend Integration**: Working TextInterviewUI with smart session state management
+**Phase 3B: Frontend Implementation** - **✅ COMPLETED**
+- ✅ **UI Components**: Complete TextInterviewUI with full functionality
+- ✅ **Testing Results**: TextInterviewUI Tests 13/13 PASSING
+- ✅ **tRPC Integration**: Working interview flow with smart session state management
 - ✅ **Question Generation API**: Dedicated modality-agnostic question generation system
 - ✅ **React Compliance**: Proper hook usage patterns and error handling
 
-**✅ PHASE 3C PROGRESS:**
+**Phase 3C: MVP UX Refinement** - **🔧 PAUSED - DATABASE ALIGNMENT REQUIRED**
 - ✅ **Session Control Polish**: Save functionality with proper terminology and empty bubble fix
 - ✅ **UX Improvements**: Clear button states, loading feedback, and confirmation dialogs
 - ✅ **Input Validation**: Server-side protection against empty responses and malformed data
-- ✅ **Chat History Filtering**: Clean conversation display excluding save checkpoints
-- 🔧 **User-Controlled Topics**: Next priority - implement user-controlled topic transitions
-
-**🔧 CURRENT ACTIVE TASK:**
-- 🔧 **AI Function Separation**: Split continueInterview into conversational vs topical functions
-- 🔧 **tRPC Procedure Refactoring**: submitResponse + getNextTopicalQuestion procedures  
-- 🔧 **"Next Question" Button**: User-controlled flow with 2-exchange conversation cycles
-- 🔧 **AI Prompt Optimization**: Separate prompts for conversation vs topic generation
-
-**📋 UPCOMING PRIORITIES:**
-- 📋 **Voice Mode Completion**: Fix remaining 5 VoiceInterviewUI tests after UX refinement
-- 📋 **Avatar Mode Implementation**: Build AvatarInterviewUI based on existing components
-- 📋 **Multi-Modal Integration**: Parameter-based mode routing (?mode=text|voice|avatar)
-- 📋 **Purchase Integration**: Feature entitlement and monetization system
-
-**📋 UPCOMING PHASE 4:**
-- 📋 **UX Architecture Enhancement**: Multi-JD target management system
-- 📋 **Advanced Features**: Multiple interview types, enhanced analytics
-- 📋 **Production Polish**: Performance optimization and mobile responsiveness
-
-**Milestone Achievement: Session control and save functionality completed. Moving to user-controlled topic transitions for polished MVP conversation flow.**
+- ❌ **BLOCKER**: Code uses `history` field, database uses `questionSegments` structure
 
 ---
 
-## **🚀 Next Development Priorities**
+## **🚨 CURRENT CRITICAL ISSUE: Database Schema Mismatch**
 
-**Immediate Focus: MVP UX Refinement (Phase 3C)**
-1. **Implement Function Separation**: Split AI functions for clear responsibilities
-2. **Update tRPC Procedures**: Replace confusing getNextQuestion with submitResponse + getNextTopicalQuestion
-3. **Add "Next Question" Button**: User-controlled topic transitions with visual feedback
-4. **Test & Validate UX**: Ensure 2-exchange flow works smoothly
+### **Issue Discovery**
+During Phase 3C testing, we discovered that our current tRPC procedures expect a `SessionData.history` field, but the actual database uses a more sophisticated structure:
 
-**Post-MVP Enhancement:**
-1. **Complete VoiceInterviewUI**: Fix remaining 5 test failures for recording workflow
-2. **Implement Avatar Mode**: Build AvatarInterviewUI using existing avatar components
-3. **Parameter-Based Routing**: Add ?mode= query parameter handling to session pages
-4. **Mode Selection UI**: Dashboard interface for choosing interview modality
+**Database Schema (CORRECT):**
+```typescript
+model SessionData {
+  questionSegments     Json  // Array of QuestionSegment objects
+  currentQuestionIndex Int   // Which question is currently active
+  // ... other fields
+}
 
-**Architecture Enhancement:**
-1. **Multi-JD Target System**: Support multiple job targets per user
-2. **Enhanced Onboarding**: Multi-step workflow for JD/Resume input
-3. **JD Management Interface**: Organize and configure multiple interview targets
-4. **Advanced Analytics**: Cross-session comparisons and skill progression tracking
+interface QuestionSegment {
+  questionId: string;           // "q1_opening", "q2_topic1"
+  questionNumber: number;       // 1, 2, 3...
+  questionType: string;         // "opening", "technical", "behavioral"
+  question: string;             // Question text
+  keyPoints: string[];          // Guidance points
+  startTime: string;            // When question started
+  endTime: string | null;       // When completed (null = active)
+  conversation: Array<{         // Chat history for this question
+    role: "ai" | "user";
+    content: string;
+    timestamp: string;
+    messageType: "question" | "response";
+  }>;
+}
+```
 
-**Status: 🔧 Phase 3C Active - Implementing user-controlled topic transitions for polished MVP UX** 
+**Code Expectation (INCORRECT):**
+```typescript
+// Current code tries to update:
+await ctx.db.sessionData.update({
+  data: { history: historyForDb } // ❌ Field doesn't exist
+});
+```
+
+### **Why QuestionSegments is BETTER**
+The existing `questionSegments` structure is actually **superior** for our Phase 3C goals:
+
+1. **📋 Topic Organization**: Each question gets its own conversation thread
+2. **⏱️ Progress Tracking**: Clear start/end times per question segment
+3. **📊 Analytics Ready**: Easy to analyze performance per question type
+4. **🎯 User-Controlled Transitions**: Perfect alignment with Phase 3C goals!
+5. **💾 Save Functionality**: Can update current question without affecting others
+
+---
+
+## **🎯 CURRENT ACTIVE TASK: Database Schema Alignment**
+
+**Status: 🔧 ACTIVE - Code Migration to QuestionSegments Structure**
+
+### **Migration Strategy**
+**Goal:** Update all tRPC procedures and frontend code to work with the correct `questionSegments` + `currentQuestionIndex` database structure.
+
+**Key Changes Required:**
+1. **Update tRPC Procedures**: Modify session router to work with questionSegments
+2. **Update Type Definitions**: Create proper TypeScript interfaces for QuestionSegment
+3. **Update Frontend Components**: Adapt TextInterviewUI to new data structure
+4. **Update Tests**: Align all tests with new data structure
+5. **Verify Integration**: Ensure all flows work end-to-end
+
+**Migration Benefits:**
+- ✅ **Better UX**: Natural topic-based organization
+- ✅ **Phase 3C Alignment**: Perfect for user-controlled transitions
+- ✅ **Analytics**: Rich data structure for session analysis
+- ✅ **Performance**: More efficient updates (modify current question only)
+
+### **Implementation Priority**
+1. **High Priority**: Update session router procedures (startInterviewSession, submitResponse, etc.)
+2. **High Priority**: Update TypeScript types and interfaces
+3. **Medium Priority**: Update TextInterviewUI component
+4. **Medium Priority**: Update tests to match new structure
+5. **Low Priority**: Update documentation and examples
+
+---
+
+## **📋 Updated Development Priorities**
+
+**Immediate Focus: Database Schema Alignment**
+1. **Create Migration Plan**: Document exact procedure changes needed
+2. **Update tRPC Procedures**: Migrate all session router procedures to questionSegments
+3. **Update Type System**: Create proper TypeScript interfaces
+4. **Test Integration**: Verify all functionality works with new structure
+
+**Post-Migration: Resume Phase 3C**
+1. **User-Controlled Topics**: Implement topic transition button (now easier!)
+2. **Complete VoiceInterviewUI**: Fix remaining 5 test failures
+3. **Avatar Mode**: Build AvatarInterviewUI
+4. **Multi-Modal Routing**: Parameter-based mode selection
+
+**Future Phases:**
+1. **Phase 4**: Advanced features and analytics
+2. **Production**: Performance optimization and deployment
+
+---
+
+**Status: 🔧 Database Schema Alignment Active - Migrating code to match superior questionSegments structure** 
