@@ -113,16 +113,49 @@ export const sessionRouter = createTRPCRouter({
 
       const firstQuestionResponse = await getFirstQuestion(jdResumeRecord, persona);
 
-      // FIXED: Create session with QuestionSegments structure instead of history
+      // Create first question segment immediately during session creation
+      const firstQuestionSegment: QuestionSegment = {
+        questionId: "q1_opening",
+        questionNumber: 1,
+        questionType: "opening",
+        question: firstQuestionResponse.questionText,
+        keyPoints: [], // Will be extracted from AI response
+        startTime: new Date().toISOString(),
+        endTime: null, // Active question
+        conversation: [
+          {
+            role: "ai",
+            content: firstQuestionResponse.questionText,
+            timestamp: new Date().toISOString(),
+            messageType: "question"
+          }
+        ]
+      };
+
+      // Extract key points from AI response
+      try {
+        const parsedResponse = parseAiResponse(firstQuestionResponse.rawAiResponseText);
+        firstQuestionSegment.keyPoints = parsedResponse.keyPoints;
+      } catch (error) {
+        console.error("Failed to parse AI response for key points:", error);
+        // Use fallback key points
+        firstQuestionSegment.keyPoints = [
+          "Focus on your specific role and contributions",
+          "Highlight technologies and tools you used", 
+          "Discuss challenges faced and how you overcame them"
+        ];
+      }
+
+      // Create session with populated questionSegments
       const newSession = await db.sessionData.create({
         data: {
           userId: ctx.session.user.id,
           jdResumeTextId: jdResumeRecord.id,
           personaId: input.personaId,
           durationInSeconds: input.durationInSeconds ?? 0,
-          // Use questionSegments instead of history field
-          questionSegments: [], // Empty initially - will be populated by startSession
+          questionSegments: JSON.parse(JSON.stringify([firstQuestionSegment])) as Prisma.InputJsonValue,
           currentQuestionIndex: 0,
+          startTime: new Date()
         },
       });
 

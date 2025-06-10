@@ -85,22 +85,25 @@ export default function MvpJdResumeInputForm({
     
     // Ensure text is saved before starting session
     if (!lastSavedData || jdText !== lastSavedData.jdText || resumeText !== lastSavedData.resumeText) {
-      // Save first
+      // Save first and wait for completion
       if (!saveJdResumeMutation.isPending) {
-        handleSave();
-        
-        // Wait for save to complete
-        // Note: This is a simplified approach. In production, you might want to
-        // coordinate this better with the mutation states
+        try {
+          // Wait for the save operation to complete
+          await saveJdResumeMutation.mutateAsync({ jdText, resumeText });
+          // After save completes, the mutation onSuccess callback will update lastSavedData
+          // Continue to session creation below
+        } catch (error) {
+          console.error('Error saving before session start:', error);
+          onError?.(`Failed to save text before starting session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          return;
+        }
+      } else {
+        // Save is already in progress, don't start session yet
         return;
       }
     }
     
-    if (!lastSavedData) {
-      onError?.('Please save your JD and Resume text before starting a session.');
-      return;
-    }
-    
+    // At this point, we should have saved data (either from before or just saved)
     // Use type-safe persona constant
     const personaId = PERSONA_IDS.HR_RECRUITER_GENERAL;
     createSessionMutation.mutate({ personaId, durationInSeconds: 15 * 60 });

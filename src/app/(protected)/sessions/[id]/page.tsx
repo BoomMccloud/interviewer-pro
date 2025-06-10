@@ -92,32 +92,6 @@ export default function SessionPage() {
     }
   });
 
-  // Session state management mutations
-  const updateSessionState = api.session.updateSessionState.useMutation({
-    onSuccess: (result) => {
-      if (result.isCompleted) {
-        setSessionState(SESSION_STATES.COMPLETED);
-        router.push(`/sessions/${sessionId}/report`);
-      } else if (result.isPaused) {
-        // Handle pause state if needed
-        void activeSession.refetch();
-      }
-    },
-    onError: (error) => {
-      console.error('Error updating session state:', error);
-    }
-  });
-
-  // Keep old mutation for backward compatibility during transition
-  const getNextQuestion = api.session.getNextQuestion.useMutation({
-    onSuccess: (result) => {
-      if (result.isComplete) {
-        setSessionState(SESSION_STATES.COMPLETED);
-      }
-      void activeSession.refetch();
-    }
-  });
-
   // Handle session state based on query results
   useEffect(() => {
     if (activeSession.isSuccess && activeSession.data) {
@@ -138,13 +112,11 @@ export default function SessionPage() {
   // Handle session initialization based on state
   useEffect(() => {
     if (sessionState === SESSION_STATES.NEW) {
-      // Session doesn't exist - start new interview
-      startSession.mutate({ 
-        sessionId, 
-        personaId: PERSONA_IDS.HR_RECRUITER_GENERAL  // Type-safe constant
-      });
+      // Session doesn't exist but was just created - it should already have questions
+      // Just refetch to get the newly created session data
+      void activeSession.refetch();
     }
-  }, [sessionState, sessionId, startSession]);
+  }, [sessionState, sessionId, activeSession]);
 
   // Fetch persona name when session data is available
   useEffect(() => {
@@ -235,15 +207,8 @@ export default function SessionPage() {
 
   const handleSave = async () => {
     console.log('Saving session state');
-    try {
-      await updateSessionState.mutateAsync({
-        sessionId,
-        action: 'pause', // Keep backend action as 'pause' but UI shows 'save'
-        currentResponse: userInput
-      });
-    } catch (error) {
-      console.error('Failed to save session:', error);
-    }
+    // TODO: Implement save functionality with new QuestionSegments procedures
+    alert('Save functionality temporarily disabled during migration');
   };
 
   const handleEnd = async () => {
@@ -258,21 +223,14 @@ export default function SessionPage() {
       return;
     }
     
-    try {
-      await updateSessionState.mutateAsync({
-        sessionId,
-        action: 'end'
-      });
-    } catch (error) {
-      console.error('Failed to end session:', error);
-      // Fallback: navigate to report anyway
-      router.push(`/sessions/${sessionId}/report`);
-    }
+    // TODO: Implement end functionality with new QuestionSegments procedures
+    // For now, just navigate to report
+    router.push(`/sessions/${sessionId}/report`);
   };
 
   const handleRestartSession = () => {
-    // Reset the completed session first, then start fresh
-    resetSession.mutate({ sessionId });
+    // TODO: Implement restart with new QuestionSegments procedures
+    alert('Restart functionality temporarily disabled during migration');
   };
 
   const handleViewReport = () => {
@@ -383,11 +341,25 @@ export default function SessionPage() {
       // Map current session data structure to new TextInterviewUI interface
       const mappedSessionData = {
         sessionId: sessionData.sessionId,
-        history: sessionData.conversationHistory.map((msg: { role: string; content: string; timestamp: string }) => ({
-          role: msg.role === 'ai' ? 'model' as const : 'user' as const,
-          text: msg.content,
-          timestamp: new Date(msg.timestamp),
-        })),
+        history: sessionData.conversationHistory.map((msg: { role: string; content: string; timestamp: string }) => {
+          // Fix role mapping bug and add explicit error handling
+          let mappedRole: 'ai' | 'user';
+          
+          if (msg.role === 'ai' || msg.role === 'model') {
+            mappedRole = 'ai';
+          } else if (msg.role === 'user') {
+            mappedRole = 'user';
+          } else {
+            // Fail fast instead of defaulting to prevent silent bugs
+            throw new Error(`Unexpected conversation role: '${msg.role}'. Expected 'ai', 'model', or 'user'. This indicates a backend/frontend role mapping inconsistency.`);
+          }
+          
+          return {
+            role: mappedRole,
+            content: msg.content,
+            timestamp: new Date(msg.timestamp),
+          };
+        }),
         currentQuestion: sessionData.currentQuestion,
         keyPoints: sessionData.keyPoints,
         status: sessionData.isActive ? 'active' as const : 'completed' as const,
@@ -408,18 +380,21 @@ export default function SessionPage() {
               isGettingNextTopic={getNextTopicalQuestion.isPending}
               onSave={handleSave}
               onEnd={handleEnd}
-              isSaving={updateSessionState.isPending}
-              isEnding={updateSessionState.isPending}
+              isSaving={false} // Temporary: was updateSessionState.isPending
+              isEnding={false} // Temporary: was updateSessionState.isPending
             />
           );
         
         case INTERVIEW_MODES.VOICE:
           return (
             <VoiceInterviewUI
-              sessionData={sessionData}
+              sessionData={{
+                ...sessionData,
+                timeRemaining: 900, // 15 minutes default, TODO: calculate actual remaining time
+              }}
               currentQuestion={sessionData.currentQuestion}
               keyPoints={sessionData.keyPoints}
-              isProcessingResponse={getNextQuestion.isPending}
+              isProcessingResponse={false}
               onSendVoiceInput={handleSendVoiceInput}
               onPause={handleSave}
               onEnd={handleEnd}
@@ -452,8 +427,8 @@ export default function SessionPage() {
               isGettingNextTopic={getNextTopicalQuestion.isPending}
               onSave={handleSave}
               onEnd={handleEnd}
-              isSaving={updateSessionState.isPending}
-              isEnding={updateSessionState.isPending}
+              isSaving={false} // Temporary: was updateSessionState.isPending
+              isEnding={false} // Temporary: was updateSessionState.isPending
             />
           );
       }
