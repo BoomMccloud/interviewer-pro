@@ -262,7 +262,242 @@ Frontend: Update "Current Question" section with new topic
 
 ---
 
-## 🎛️ **5. Frontend Control Points**
+## 🧠 **5. Context Handling & Conversation Memory**
+
+### **📋 How the LLM Knows User Responses**
+
+Your system has **sophisticated context management** that ensures the LLM always understands the conversation flow and user responses. Here's exactly how it works:
+
+#### **🔄 Context Flow by Function**
+
+| Function | Context Method | User Response Handling | History Depth | Memory Strategy |
+|----------|----------------|------------------------|---------------|----------------|
+| `getFirstQuestion()` | System setup only | **None** (initial question) | Empty `[]` | Fresh start |
+| `continueInterview()` | **Structured history** | Added as final message | **Full history** | Complete memory |
+| `continueConversation()` | **Natural prompt** | Explicit "Candidate just said: ..." | **Recent (6 turns)** | Focused memory |
+| `getNewTopicalQuestion()` | **Topic-focused** | Implicit in history | **Full history** | Topic-aware memory |
+
+#### **🏗️ Core Context Builder (`buildPromptContents`)**
+
+```typescript
+export function buildPromptContents(
+  jdResumeText: JdResumeText,
+  persona: Persona,
+  history: MvpSessionTurn[],
+  currentUserResponse?: string  // 🎯 KEY: Optional user response
+): Content[] {
+  const contents: Content[] = [];
+
+  // 1. Setup context (JD, Resume, Instructions)
+  contents.push({
+    role: 'user',
+    parts: [
+      { text: systemInstructionText },
+      { text: `Job Description:\n<JD>\n${jdResumeText.jdText}\n</JD>` },
+      { text: `Resume:\n<RESUME>\n${jdResumeText.resumeText}\n</RESUME>` }
+    ],
+  });
+
+  // 2. Add conversation history (alternating user/model turns)
+  for (const turn of history) {
+    const role = turn.role === 'user' ? 'user' : 'model';
+    let parts: Part[] = [{ text: turn.text }];
+
+    // Use raw AI response if available for better context
+    if (turn.role === 'model' && turn.rawAiResponseText) {
+      parts = [{ text: turn.rawAiResponseText }];
+    }
+
+    contents.push({ role, parts });
+  }
+
+  // 3. 🎯 Add current user response (if provided)
+  if (currentUserResponse !== undefined) {
+    contents.push({ 
+      role: 'user', 
+      parts: [{ text: currentUserResponse }] 
+    });
+  }
+
+  return contents;
+}
+```
+
+#### **🌊 Natural Conversation Context (`buildNaturalConversationPrompt`)**
+
+```typescript
+function buildNaturalConversationPrompt(
+  jdResumeText: JdResumeText,
+  persona: Persona,
+  history: MvpSessionTurn[],
+  userResponse: string,  // 🎯 Direct user response parameter
+  currentTopic?: string
+): Content[] {
+  // 1. Recent history only (last 6 turns to stay focused)
+  const recentHistory = history.slice(-6);
+  const conversationSoFar = recentHistory
+    .map(turn => `${turn.role === 'user' ? 'Candidate' : 'Interviewer'}: ${turn.text}`)
+    .join('\n');
+
+  // 2. Explicit user response in prompt
+  const naturalPrompt = `
+    You are a ${persona.name} having a natural interview conversation.
+    
+    Recent conversation:
+    ${conversationSoFar}
+
+    Candidate just said: "${userResponse}"  // 🎯 EXPLICIT user response
+
+    INSTRUCTIONS:
+    - Respond naturally based on what they just shared
+    - Ask thoughtful follow-up questions about the same topic
+    - Show genuine curiosity about their experience
+    - Keep responses concise (1-2 sentences max)
+  `;
+
+  return [{ role: 'user', parts: [{ text: naturalPrompt }] }];
+}
+```
+
+### **🗃️ Conversation History Structure**
+
+#### **MvpSessionTurn Interface**
+```typescript
+interface MvpSessionTurn {
+  role: 'user' | 'model';
+  text: string;                    // Display text for UI
+  rawAiResponseText?: string;      // Full AI response for context
+  analysis?: string;               // AI analysis (structured responses)
+  feedbackPoints?: string[];       // Feedback points
+  suggestedAlternative?: string;   // Suggested improvements
+}
+```
+
+#### **🔄 How History Builds Over Time**
+
+```typescript
+// Turn 1: AI asks initial question
+history = [
+  { 
+    role: 'model', 
+    text: "Tell me about your React experience", 
+    rawAiResponseText: "<QUESTION>Tell me about your React experience</QUESTION>..." 
+  }
+]
+
+// Turn 2: User responds → Gets added to context
+history = [
+  { role: 'model', text: "Tell me about your React experience", rawAiResponseText: "..." },
+  { role: 'user', text: "I've built several React apps including...", rawAiResponseText: undefined }
+]
+
+// Turn 3: AI responds → Continues conversation
+history = [
+  { role: 'model', text: "...", rawAiResponseText: "..." },
+  { role: 'user', text: "I've built several React apps...", rawAiResponseText: undefined },
+  { role: 'model', text: "That's interesting! What challenges...", rawAiResponseText: "..." }
+]
+```
+
+### **💡 Context Flow Examples**
+
+#### **🚀 A. Initial Question (No User Response Yet)**
+```
+Context sent to Gemini:
+[
+  {
+    role: 'user',
+    parts: [
+      "You are a Technical Lead interviewer...",
+      "Job Description: Senior React Developer...",
+      "Resume: 5 years experience...",
+      "Start the interview with your first question."
+    ]
+  }
+]
+
+LLM Response: "Tell me about your most challenging React project"
+```
+
+#### **💬 B. Continuing Conversation (With User Response)**
+```
+User says: "I built a real-time chat app with Socket.io"
+
+Context sent to Gemini:
+[
+  // 1. System setup
+  { role: 'user', parts: ["System instructions + JD + Resume"] },
+  
+  // 2. Previous conversation
+  { role: 'model', parts: ["Tell me about your most challenging React project"] },
+  
+  // 3. 🎯 Current user response
+  { role: 'user', parts: ["I built a real-time chat app with Socket.io"] }
+]
+
+LLM Response: "Interesting! What was the biggest challenge with real-time updates?"
+```
+
+#### **🌊 C. Natural Conversation Flow**
+```
+User says: "State management was really tricky"
+
+Context sent to Gemini:
+[
+  {
+    role: 'user',
+    parts: [
+      `Recent conversation:
+      Interviewer: Tell me about your most challenging React project
+      Candidate: I built a real-time chat app with Socket.io
+      Interviewer: What was the biggest challenge with real-time updates?
+      
+      Candidate just said: "State management was really tricky"
+      
+      Respond naturally with a follow-up question...`
+    ]
+  }
+]
+
+LLM Response: "How did you approach managing state? Did you use Redux or Context API?"
+```
+
+### **🎯 Key Context Features**
+
+#### **✅ Why This System Works:**
+
+1. **🔄 Alternating Turns**: Gemini understands conversation flow with `role: 'user'` and `role: 'model'`
+2. **📚 Rich Context**: AI gets full conversation history for coherent responses
+3. **🎭 Raw Response Preservation**: Using `rawAiResponseText` gives AI its own complete context back
+4. **💡 Smart Truncation**: Natural conversation uses recent history to prevent context overflow
+5. **🎯 Explicit User Input**: Current user response is clearly identified in the context
+
+#### **🧠 Memory Management Strategies:**
+
+- **Full Memory** (`continueInterview`): Complete conversation history for structured interviews
+- **Focused Memory** (`continueConversation`): Recent 6 turns for natural flow
+- **Topic Memory** (`getNewTopicalQuestion`): Full history with topic awareness
+- **Fresh Memory** (`getFirstQuestion`): Clean slate for new interviews
+
+#### **🔄 Context Switching Benefits:**
+
+- **Natural Conversations**: Light context for fluid dialogue
+- **Structured Analysis**: Full context for comprehensive feedback
+- **Topic Transitions**: Complete history for coherent topic changes
+- **Performance**: Optimized context size for each use case
+
+### **📊 Context Size Optimization**
+
+| Function | Typical Context Size | Optimization Strategy |
+|----------|---------------------|----------------------|
+| `getFirstQuestion()` | ~500 tokens | JD + Resume + Instructions only |
+| `continueInterview()` | ~1500-3000 tokens | Full history + structured format |
+| `continueConversation()` | ~800-1200 tokens | Recent history + natural prompt |
+| `getNewTopicalQuestion()` | ~1200-2000 tokens | Full history + topic guidance |
+
+---
+
+## 🎛️ **6. Frontend Control Points**
 
 ### **📍 Session Page Control Points**
 
@@ -335,7 +570,7 @@ interface QuestionSegment {
 
 ---
 
-## 🔍 **7. Error Handling & Testing**
+## 🔍 **8. Error Handling & Testing**
 
 ### **🧪 Testing Strategy**
 
@@ -408,7 +643,7 @@ const submitResponse = api.session.submitResponse.useMutation({
 
 ---
 
-## 🎯 **8. Configuration & Environment**
+## 🎯 **9. Configuration & Environment**
 
 ### **🔧 Environment Variables**
 ```bash
@@ -434,7 +669,7 @@ const configs = {
 
 ---
 
-## 🚀 **9. Integration Benefits**
+## 🚀 **10. Integration Benefits**
 
 ### **✅ Architectural Strengths**
 
@@ -460,7 +695,7 @@ This creates a **user-controlled interview experience** where:
 
 ---
 
-## 📋 **10. Maintenance & Future Development**
+## 📋 **11. Maintenance & Future Development**
 
 ### **🔄 Adding New AI Functions**
 
