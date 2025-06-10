@@ -699,6 +699,28 @@ export const sessionRouter = createTRPCRouter({
         currentQuestion.endTime = new Date().toISOString();
       }
 
+      // Check if we've reached the 3-question limit
+      if (questionSegments.length >= 3) {
+        // End the interview
+        await ctx.db.sessionData.update({
+          where: { id: input.sessionId },
+          data: { 
+            questionSegments: questionSegments, // Save the completed current question
+            endTime: new Date() // Mark interview as completed
+          }
+        });
+
+        return {
+          isComplete: true,
+          message: "Interview completed! You have successfully answered 3 questions.",
+          totalQuestions: questionSegments.length,
+          questionText: null,
+          keyPoints: [],
+          questionNumber: null,
+          conversationHistory: [],
+        };
+      }
+
       // Get persona
       const persona = await getPersona(session.personaId);
       if (!persona) {
@@ -760,6 +782,9 @@ export const sessionRouter = createTRPCRouter({
       });
 
       return {
+        isComplete: false,
+        message: null,
+        totalQuestions: questionSegments.length,
         questionText: newTopicalQuestion.questionText,
         keyPoints: newTopicalQuestion.keyPoints,
         questionNumber: nextQuestionNumber,

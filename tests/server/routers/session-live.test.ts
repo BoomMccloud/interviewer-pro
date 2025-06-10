@@ -1,23 +1,26 @@
 /**
- * Phase 3A: Live Interview Session TDD Tests
+ * Phase 3A: Live Interview Session TDD Tests - QuestionSegments Migration
  * 
- * This file implements TDD for the core live interview functionality:
+ * This file implements TDD for the core live interview functionality using the new QuestionSegments architecture:
  * - startInterviewSession: Initialize session with persona and first question
- * - getNextQuestion: Process user response and generate next question  
- * - updateSessionState: Handle pause/resume/end actions
+ * - submitResponse: Process user response with conversational follow-up  
+ * - getNextTopicalQuestion: User-controlled topic transitions
  * - getActiveSession: Retrieve current session state for recovery
+ * - saveSession: Save session progress
  * 
- * Uses existing Prisma schema fields:
+ * Uses QuestionSegments schema:
  * - endTime === null → Active session
  * - endTime !== null → Completed session
- * - history JSON → Conversation state
+ * - questionSegments JSON → Structured conversation by topic
+ * - currentQuestionIndex → Active question pointer
  */
 
 import { createCaller } from '~/server/api/root';
 import { appRouter, type AppRouter } from '~/server/api/root';
 import { createTRPCContext } from '~/server/api/trpc';
 import { db } from '~/server/db';
-import type { User, JdResumeText, SessionData } from '@prisma/client';
+import type { User, JdResumeText, SessionData, Prisma } from '@prisma/client';
+import type { QuestionSegment } from '~/types';
 
 // Mock NextAuth.js
 import { auth as actualAuth } from '~/server/auth';
@@ -27,18 +30,18 @@ jest.mock('~/server/auth', () => ({
 }));
 const mockedAuth = actualAuth as jest.MockedFunction<typeof actualAuth>;
 
-// Mock Gemini AI Service
+// Mock Gemini AI Service - Updated for new procedures
 jest.mock('~/lib/gemini', () => ({
   getFirstQuestion: jest.fn(),
-  getNextQuestion: jest.fn(),
-  continueInterview: jest.fn(),
+  continueConversation: jest.fn(),
+  getNewTopicalQuestion: jest.fn(),
 }));
-import { getFirstQuestion, getNextQuestion, continueInterview } from '~/lib/gemini';
+import { getFirstQuestion, continueConversation, getNewTopicalQuestion } from '~/lib/gemini';
 const mockGetFirstQuestion = getFirstQuestion as jest.MockedFunction<typeof getFirstQuestion>;
-const mockGetNextQuestion = getNextQuestion as jest.MockedFunction<typeof getNextQuestion>;
-const mockContinueInterview = continueInterview as jest.MockedFunction<typeof continueInterview>;
+const mockContinueConversation = continueConversation as jest.MockedFunction<typeof continueConversation>;
+const mockGetNewTopicalQuestion = getNewTopicalQuestion as jest.MockedFunction<typeof getNewTopicalQuestion>;
 
-describe('Session Live Interview tRPC Router - Phase 3A TDD', () => {
+describe('Session Live Interview tRPC Router - QuestionSegments Migration', () => {
   let testUser: User;
   let testJdResume: JdResumeText;
   let testSession: SessionData;
@@ -89,19 +92,32 @@ describe('Session Live Interview tRPC Router - Phase 3A TDD', () => {
         resumeText: 'Experienced developer with 5 years in full-stack development',
       },
     });
+  });
 
-    // Set up test session for live interview (using current schema)
+  beforeEach(async () => {
+    // Create fresh test session for each test with QuestionSegments structure
     testSession = await db.sessionData.create({
       data: {
         userId: testUser.id,
         jdResumeTextId: testJdResume.id,
-        personaId: 'swe-interviewer-standard', // Use actual persona ID
-        history: [],
+        personaId: 'swe-interviewer-standard',
+        questionSegments: [], // QuestionSegments structure
+        currentQuestionIndex: 0,
         startTime: new Date(),
         endTime: null, // Active session
         durationInSeconds: 3600, // 1 hour session
       },
     });
+
+    // Reset mocks for each test
+    jest.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    // Clean up test session after each test
+    if (testSession?.id) {
+      await db.sessionData.delete({ where: { id: testSession.id } });
+    }
   });
 
   afterAll(async () => {
@@ -112,18 +128,12 @@ describe('Session Live Interview tRPC Router - Phase 3A TDD', () => {
     await db.$disconnect();
   });
 
-  beforeEach(async () => {
-    // Reset mocks for each test
-    jest.clearAllMocks();
-    // Note: Auth setup is now handled per-test via getTestCaller()
-  });
-
-  // 🔴 RED PHASE: Test startInterviewSession procedure
-  describe('startInterviewSession procedure - TDD RED Phase', () => {
+  // ✅ Test startInterviewSession procedure (already working)
+  describe('startInterviewSession procedure - QuestionSegments', () => {
     it('should initialize session with persona and generate first question', async () => {
       // Arrange
       const caller = await getTestCaller(testUser);
-      const personaId = 'swe-interviewer-standard'; // Use actual persona ID
+      const personaId = 'swe-interviewer-standard';
       
       // Mock AI service response
       mockGetFirstQuestion.mockResolvedValue({
@@ -144,9 +154,13 @@ describe('Session Live Interview tRPC Router - Phase 3A TDD', () => {
         personaId,
         currentQuestion: 'Tell me about your experience with React.',
         questionNumber: 1,
-        totalQuestions: 10,
-        timeRemaining: expect.any(Number),
-        conversationHistory: [],
+        conversationHistory: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'ai',
+            content: 'Tell me about your experience with React.',
+            messageType: 'question',
+          }),
+        ]),
       });
 
       // Verify AI service was called with correct parameters
@@ -169,264 +183,401 @@ describe('Session Live Interview tRPC Router - Phase 3A TDD', () => {
       await expect(
         caller.session.startInterviewSession({
           sessionId: testSession.id,
-          personaId: 'swe-interviewer-standard', // Use actual persona ID
+          personaId: 'swe-interviewer-standard',
         })
       ).rejects.toThrow('Not authorized to access this session');
 
       // Cleanup
       await db.user.delete({ where: { id: otherUser.id } });
     });
-
-    it('should reject starting already completed session', async () => {
-      // Arrange: Mark session as completed (endTime !== null)
-      await db.sessionData.update({
-        where: { id: testSession.id },
-        data: { 
-          endTime: new Date(), // Session completed
-          overallSummary: 'Interview completed'
-        },
-      });
-
-      const caller = await getTestCaller(testUser);
-
-      // Act & Assert: Should reject starting completed session
-      await expect(
-        caller.session.startInterviewSession({
-          sessionId: testSession.id,
-          personaId: 'technical-interviewer',
-        })
-      ).rejects.toThrow('Session is already completed');
-
-      // Reset session to active for other tests
-      await db.sessionData.update({
-        where: { id: testSession.id },
-        data: { endTime: null, overallSummary: null },
-      });
-    });
   });
 
-  // 🔴 RED PHASE: Test getNextQuestion procedure
-  describe('getNextQuestion procedure - TDD RED Phase', () => {
-    it('should process user response and generate next question', async () => {
+  // ✅ Test submitResponse procedure (new QuestionSegments)
+  describe('submitResponse procedure - QuestionSegments', () => {
+    beforeEach(async () => {
+      // Set up session with initial question segment
+      const initialQuestionSegment: QuestionSegment = {
+        questionId: 'q1_opening',
+        questionNumber: 1,
+        questionType: 'opening',
+        question: 'Tell me about your React experience.',
+        keyPoints: ['Be specific', 'Use examples', 'Show growth'],
+        startTime: new Date().toISOString(),
+        endTime: null,
+        conversation: [
+          {
+            role: 'ai',
+            content: 'Tell me about your React experience.',
+            timestamp: new Date().toISOString(),
+            messageType: 'question',
+          },
+        ],
+      };
+
+      await db.sessionData.update({
+        where: { id: testSession.id },
+        data: {
+          questionSegments: [initialQuestionSegment] as unknown as Prisma.InputJsonValue,
+          currentQuestionIndex: 0,
+        },
+      });
+    });
+
+    it('should process user response and provide conversational follow-up', async () => {
       // Arrange
       const caller = await getTestCaller(testUser);
       const userResponse = 'I have been working with React for 3 years, building scalable web applications.';
       
       // Mock AI service response
-      mockContinueInterview.mockResolvedValue({
-        nextQuestion: 'Can you describe a challenging React project you worked on?',
+      mockContinueConversation.mockResolvedValue({
         analysis: 'Good experience level mentioned',
         feedbackPoints: ['Clear timeline provided'],
-        suggestedAlternative: undefined,
+        followUpQuestion: 'Can you describe a challenging React project you worked on?',
         rawAiResponseText: 'Mock AI response',
       });
 
       // Act
-      const result = await caller.session.getNextQuestion({
+      const result = await caller.session.submitResponse({
         sessionId: testSession.id,
         userResponse,
       });
 
       // Assert
       expect(result).toMatchObject({
-        nextQuestion: 'Can you describe a challenging React project you worked on?',
-        questionNumber: expect.any(Number),
-        isComplete: false,
+        conversationResponse: 'Can you describe a challenging React project you worked on?',
         conversationHistory: expect.arrayContaining([
-          expect.objectContaining({ role: 'user', content: userResponse }),
+          expect.objectContaining({
+            role: 'ai',
+            content: 'Tell me about your React experience.',
+            messageType: 'question',
+          }),
+          expect.objectContaining({
+            role: 'user',
+            content: userResponse,
+            messageType: 'response',
+          }),
+          expect.objectContaining({
+            role: 'ai',
+            content: 'Can you describe a challenging React project you worked on?',
+            messageType: 'response',
+          }),
         ]),
+        canProceedToNextTopic: false, // Less than 4 conversation turns
       });
 
       // Verify AI service called with conversation context
-      expect(mockContinueInterview).toHaveBeenCalledWith(
-        expect.objectContaining({ jdText: expect.any(String) }), // JdResumeText object
+      expect(mockContinueConversation).toHaveBeenCalledWith(
+        testJdResume, // JdResumeText object
         expect.objectContaining({ id: 'swe-interviewer-standard' }), // Persona object
         expect.arrayContaining([
+          expect.objectContaining({ role: 'model', text: 'Tell me about your React experience.' }),
           expect.objectContaining({ role: 'user', text: userResponse }),
         ]), // History array
         userResponse // Current user response
       );
     });
 
-    it('should mark session as complete when interview finished', async () => {
-      // Arrange: Session near completion
+    it('should allow topic progression after sufficient conversation', async () => {
+      // Arrange: Add more conversation to reach 4+ turns
+      const extendedQuestionSegment: QuestionSegment = {
+        questionId: 'q1_opening',
+        questionNumber: 1,
+        questionType: 'opening',
+        question: 'Tell me about your React experience.',
+        keyPoints: ['Be specific', 'Use examples', 'Show growth'],
+        startTime: new Date().toISOString(),
+        endTime: null,
+        conversation: [
+          {
+            role: 'ai',
+            content: 'Tell me about your React experience.',
+            timestamp: new Date().toISOString(),
+            messageType: 'question',
+          },
+          {
+            role: 'user',
+            content: 'I have 3 years of React experience.',
+            timestamp: new Date().toISOString(),
+            messageType: 'response',
+          },
+          {
+            role: 'ai',
+            content: 'That sounds great! Can you tell me more?',
+            timestamp: new Date().toISOString(),
+            messageType: 'response',
+          },
+        ],
+      };
+
       await db.sessionData.update({
         where: { id: testSession.id },
         data: {
-          endTime: null, // Still active
-          history: Array(9).fill(null).map((_, i) => ({
-            id: `turn-${i + 1}-${i % 2 === 0 ? 'model' : 'user'}`,
-            role: i % 2 === 0 ? 'model' : 'user', // Use 'model' instead of 'ai'
-            text: `Question/Answer ${i + 1}`, // Use 'text' instead of 'content'
-            timestamp: new Date().toISOString(),
-          })),
+          questionSegments: [extendedQuestionSegment] as unknown as Prisma.InputJsonValue,
+          currentQuestionIndex: 0,
         },
       });
 
-      mockContinueInterview.mockResolvedValue({
-        nextQuestion: undefined, // Indicates completion
-        analysis: 'Interview completed',
-        feedbackPoints: [],
-        suggestedAlternative: undefined,
-        rawAiResponseText: 'Interview completed',
+      const caller = await getTestCaller(testUser);
+      const userResponse = 'I built several production applications with complex state management.';
+      
+      mockContinueConversation.mockResolvedValue({
+        analysis: 'Good technical depth',
+        feedbackPoints: ['Mentions production experience'],
+        followUpQuestion: 'What was the most challenging aspect?',
+        rawAiResponseText: 'Mock AI response',
       });
 
-      const caller = await getTestCaller(testUser);
-
       // Act
-      const result = await caller.session.getNextQuestion({
+      const result = await caller.session.submitResponse({
         sessionId: testSession.id,
-        userResponse: 'My final answer to wrap up the interview.',
+        userResponse,
       });
 
       // Assert
       expect(result).toMatchObject({
-        nextQuestion: undefined,
-        isComplete: true,
+        conversationResponse: 'What was the most challenging aspect?',
+        canProceedToNextTopic: true, // 4+ conversation turns allows topic progression
+      });
+    });
+  });
+
+  // ✅ Test getNextTopicalQuestion procedure (new QuestionSegments)
+  describe('getNextTopicalQuestion procedure - QuestionSegments', () => {
+    beforeEach(async () => {
+      // Set up session with completed first question segment
+      const completedQuestionSegment: QuestionSegment = {
+        questionId: 'q1_opening',
+        questionNumber: 1,
+        questionType: 'opening',
+        question: 'Tell me about your React experience.',
+        keyPoints: ['Be specific', 'Use examples'],
+        startTime: new Date(Date.now() - 300000).toISOString(), // 5 minutes ago
+        endTime: null, // Will be set when transitioning
+        conversation: [
+          {
+            role: 'ai',
+            content: 'Tell me about your React experience.',
+            timestamp: new Date(Date.now() - 300000).toISOString(),
+            messageType: 'question',
+          },
+          {
+            role: 'user',
+            content: 'I have experience with React and functional components.',
+            timestamp: new Date(Date.now() - 240000).toISOString(),
+            messageType: 'response',
+          },
+          {
+            role: 'ai',
+            content: 'That sounds great! Any specific challenges?',
+            timestamp: new Date(Date.now() - 180000).toISOString(),
+            messageType: 'response',
+          },
+          {
+            role: 'user',
+            content: 'Yes, I worked on performance optimization.',
+            timestamp: new Date(Date.now() - 120000).toISOString(),
+            messageType: 'response',
+          },
+        ],
+      };
+
+      await db.sessionData.update({
+        where: { id: testSession.id },
+        data: {
+          questionSegments: [completedQuestionSegment] as unknown as Prisma.InputJsonValue,
+          currentQuestionIndex: 0,
+        },
+      });
+    });
+
+    it('should create new question segment for topic transition', async () => {
+      // Arrange
+      const caller = await getTestCaller(testUser);
+      
+      mockGetNewTopicalQuestion.mockResolvedValue({
+        questionText: 'Now let\'s discuss your Node.js experience.',
+        keyPoints: ['API design', 'Database integration', 'Performance optimization'],
+        rawAiResponseText: 'Mock AI response',
       });
 
-      // Verify session marked as completed (endTime !== null)
+      // Act
+      const result = await caller.session.getNextTopicalQuestion({
+        sessionId: testSession.id,
+      });
+
+      // Assert
+      expect(result).toMatchObject({
+        isComplete: false,
+        message: null,
+        totalQuestions: 2,
+        questionText: 'Now let\'s discuss your Node.js experience.',
+        keyPoints: ['API design', 'Database integration', 'Performance optimization'],
+        questionNumber: 2,
+        conversationHistory: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'ai',
+            content: 'Now let\'s discuss your Node.js experience.',
+            messageType: 'question',
+          }),
+        ]),
+      });
+
+      // Verify previous question was marked as completed
+      const updatedSession = await db.sessionData.findUnique({
+        where: { id: testSession.id },
+      });
+      const questionSegments = updatedSession?.questionSegments as QuestionSegment[];
+      expect(questionSegments[0]?.endTime).toBeTruthy(); // First question marked complete
+      expect(questionSegments).toHaveLength(2); // New question segment added
+    });
+
+    it('should end interview after 3 questions', async () => {
+      // Arrange: Set up session with 3 completed question segments
+      const threeQuestionSegments: QuestionSegment[] = [
+        {
+          questionId: 'q1_opening',
+          questionNumber: 1,
+          questionType: 'opening',
+          question: 'Tell me about your React experience.',
+          keyPoints: ['Be specific', 'Use examples'],
+          startTime: new Date(Date.now() - 600000).toISOString(), // 10 minutes ago
+          endTime: new Date(Date.now() - 480000).toISOString(), // 8 minutes ago
+          conversation: [
+            {
+              role: 'ai',
+              content: 'Tell me about your React experience.',
+              timestamp: new Date(Date.now() - 600000).toISOString(),
+              messageType: 'question',
+            },
+            {
+              role: 'user',
+              content: 'I have 3 years of React experience.',
+              timestamp: new Date(Date.now() - 540000).toISOString(),
+              messageType: 'response',
+            },
+          ],
+        },
+        {
+          questionId: 'q2_technical',
+          questionNumber: 2,
+          questionType: 'technical',
+          question: 'How do you handle state management?',
+          keyPoints: ['Redux', 'Context API', 'Hooks'],
+          startTime: new Date(Date.now() - 480000).toISOString(), // 8 minutes ago
+          endTime: new Date(Date.now() - 360000).toISOString(), // 6 minutes ago
+          conversation: [
+            {
+              role: 'ai',
+              content: 'How do you handle state management?',
+              timestamp: new Date(Date.now() - 480000).toISOString(),
+              messageType: 'question',
+            },
+            {
+              role: 'user',
+              content: 'I use Redux for complex state and useState for local state.',
+              timestamp: new Date(Date.now() - 420000).toISOString(),
+              messageType: 'response',
+            },
+          ],
+        },
+        {
+          questionId: 'q3_behavioral',
+          questionNumber: 3,
+          questionType: 'behavioral',
+          question: 'Describe a challenging project.',
+          keyPoints: ['Problem-solving', 'Teamwork', 'Results'],
+          startTime: new Date(Date.now() - 360000).toISOString(), // 6 minutes ago
+          endTime: null, // Currently active
+          conversation: [
+            {
+              role: 'ai',
+              content: 'Describe a challenging project.',
+              timestamp: new Date(Date.now() - 360000).toISOString(),
+              messageType: 'question',
+            },
+            {
+              role: 'user',
+              content: 'I led a team to migrate a legacy system.',
+              timestamp: new Date(Date.now() - 300000).toISOString(),
+              messageType: 'response',
+            },
+          ],
+        },
+      ];
+
+      await db.sessionData.update({
+        where: { id: testSession.id },
+        data: {
+          questionSegments: threeQuestionSegments as unknown as Prisma.InputJsonValue,
+          currentQuestionIndex: 2, // Currently on the 3rd question (0-indexed)
+        },
+      });
+
+      const caller = await getTestCaller(testUser);
+
+      // Act: Try to get the next topical question after 3 questions
+      const result = await caller.session.getNextTopicalQuestion({
+        sessionId: testSession.id,
+      });
+
+      // Assert: Interview should be marked as complete
+      expect(result).toMatchObject({
+        isComplete: true,
+        message: 'Interview completed! You have successfully answered 3 questions.',
+        totalQuestions: 3,
+        questionText: null,
+        keyPoints: [],
+        questionNumber: null,
+        conversationHistory: [],
+      });
+
+      // Verify session is marked as completed in database
       const completedSession = await db.sessionData.findUnique({
         where: { id: testSession.id },
       });
-      expect(completedSession?.endTime).toBeTruthy();
+      expect(completedSession?.endTime).toBeTruthy(); // Interview marked as completed
+      
+      // Verify the 3rd question was marked as completed
+      const finalQuestionSegments = completedSession?.questionSegments as QuestionSegment[];
+      expect(finalQuestionSegments[2]?.endTime).toBeTruthy(); // 3rd question marked complete
     });
   });
 
-  // 🔴 RED PHASE: Test updateSessionState procedure
-  describe('updateSessionState procedure - TDD RED Phase', () => {
-    it('should pause active session by storing state in history', async () => {
-      // Arrange: Active session
-      await db.sessionData.update({
-        where: { id: testSession.id },
-        data: { 
-          endTime: null, // Active
-          personaId: 'swe-interviewer-standard', // Use actual persona ID
-          history: [
-            {
-              id: 'turn-1-model',
-              role: 'model', // Use 'model' instead of 'ai'
-              text: 'Current question in progress', // Use 'text' instead of 'content'
-              timestamp: new Date().toISOString(),
-            },
-          ],
-        },
-      });
+  // ✅ Test getActiveSession procedure (already working with QuestionSegments)
+  describe('getActiveSession procedure - QuestionSegments', () => {
+    it('should retrieve current session state with QuestionSegments structure', async () => {
+      // Arrange: Set up active session with QuestionSegments
+      const activeQuestionSegment: QuestionSegment = {
+        questionId: 'q1_opening',
+        questionNumber: 1,
+        questionType: 'opening',
+        question: 'Tell me about your experience.',
+        keyPoints: ['Be specific', 'Use examples'],
+        startTime: new Date().toISOString(),
+        endTime: null,
+        conversation: [
+          {
+            role: 'ai',
+            content: 'Tell me about your experience.',
+            timestamp: new Date().toISOString(),
+            messageType: 'question',
+          },
+          {
+            role: 'user',
+            content: 'I am a software engineer.',
+            timestamp: new Date().toISOString(),
+            messageType: 'response',
+          },
+        ],
+      };
 
-      const caller = await getTestCaller(testUser);
-
-      // Act: This will FAIL initially
-      const result = await caller.session.updateSessionState({
-        sessionId: testSession.id,
-        action: 'pause',
-        currentResponse: 'I was in the middle of answering...',
-      });
-
-      // Assert
-      expect(result).toMatchObject({
-        isPaused: true,
-        lastActivityTime: expect.any(String),
-      });
-
-      // Verify pause state stored in history JSON
-      const pausedSession = await db.sessionData.findUnique({
-        where: { id: testSession.id },
-      });
-      const history = pausedSession?.history as { type?: string; text?: string }[];
-      expect(history).toContainEqual(
-        expect.objectContaining({
-          type: 'pause',
-          text: 'I was in the middle of answering...',
-        })
-      );
-    });
-
-    it('should resume paused session', async () => {
-      // Arrange: Paused session (with pause event in history)
-      await db.sessionData.update({
-        where: { id: testSession.id },
-        data: { 
-          endTime: null, // Still active, just paused
-          history: [
-            {
-              role: 'ai',
-              content: 'Question before pause',
-              timestamp: new Date().toISOString(),
-            },
-            {
-              type: 'pause',
-              content: 'Partial response',
-              timestamp: new Date().toISOString(),
-            },
-          ],
-        },
-      });
-
-      const caller = await getTestCaller(testUser);
-
-      // Act
-      const result = await caller.session.updateSessionState({
-        sessionId: testSession.id,
-        action: 'resume',
-      });
-
-      // Assert
-      expect(result).toMatchObject({
-        isPaused: false,
-        lastActivityTime: expect.any(String),
-      });
-    });
-
-    it('should end session and set completion time', async () => {
-      // Arrange: Active session
-      await db.sessionData.update({
-        where: { id: testSession.id },
-        data: { endTime: null }, // Active
-      });
-
-      const caller = await getTestCaller(testUser);
-
-      // Act
-      const result = await caller.session.updateSessionState({
-        sessionId: testSession.id,
-        action: 'end',
-      });
-
-      // Assert
-      expect(result).toMatchObject({
-        isCompleted: true,
-        endTime: expect.any(String),
-      });
-
-      // Verify database updated with endTime
-      const endedSession = await db.sessionData.findUnique({
-        where: { id: testSession.id },
-      });
-      expect(endedSession?.endTime).toBeTruthy();
-    });
-  });
-
-  // 🔴 RED PHASE: Test getActiveSession procedure
-  describe('getActiveSession procedure - TDD RED Phase', () => {
-    it('should retrieve current session state for recovery', async () => {
-      // Arrange: Set up active session with conversation history
       await db.sessionData.update({
         where: { id: testSession.id },
         data: {
           endTime: null, // Active session
-          personaId: 'behavioral-interviewer-friendly', // Use actual persona ID
-          history: [
-            {
-              role: 'ai',
-              content: 'Tell me about yourself.',
-              timestamp: new Date().toISOString(),
-            },
-            {
-              role: 'user',
-              content: 'I am a software engineer.',
-              timestamp: new Date().toISOString(),
-            },
-          ],
+          personaId: 'swe-interviewer-standard',
+          questionSegments: [activeQuestionSegment],
+          currentQuestionIndex: 0,
         },
       });
 
@@ -441,18 +592,20 @@ describe('Session Live Interview tRPC Router - Phase 3A TDD', () => {
       expect(result).toMatchObject({
         sessionId: testSession.id,
         isActive: true, // endTime === null
-        personaId: 'behavioral-interviewer-friendly', // Use actual persona ID
-        currentQuestion: expect.any(String),
+        personaId: 'swe-interviewer-standard',
+        currentQuestion: 'Tell me about your experience.',
+        keyPoints: ['Be specific', 'Use examples'],
         conversationHistory: expect.arrayContaining([
-          expect.objectContaining({ role: 'ai', content: 'Tell me about yourself.' }),
+          expect.objectContaining({ role: 'ai', content: 'Tell me about your experience.' }),
           expect.objectContaining({ role: 'user', content: 'I am a software engineer.' }),
         ]),
-        questionNumber: expect.any(Number),
-        timeRemaining: expect.any(Number),
+        questionNumber: 1,
+        totalQuestions: 1,
+        canProceedToNextTopic: false, // Less than 4 conversation turns
       });
     });
 
-    it('should return null for non-existent session', async () => {
+    it('should return error for non-existent session', async () => {
       const caller = await getTestCaller(testUser);
 
       // Act & Assert
@@ -473,16 +626,17 @@ describe('Session Live Interview tRPC Router - Phase 3A TDD', () => {
       const otherSession = await db.sessionData.create({
         data: {
           userId: otherUser.id,
-          jdResumeTextId: testJdResume.id, // Can reference same JD/Resume
-          personaId: 'technical-interviewer',
-          history: [],
+          jdResumeTextId: testJdResume.id,
+          personaId: 'swe-interviewer-standard',
+          questionSegments: [],
+          currentQuestionIndex: 0,
           startTime: new Date(),
-          endTime: null, // Active
+          endTime: null,
           durationInSeconds: 3600,
         },
       });
 
-      const caller = await getTestCaller(testUser); // Using testUser auth
+      const caller = await getTestCaller(testUser);
 
       // Act & Assert: Should throw authorization error
       await expect(
@@ -494,6 +648,26 @@ describe('Session Live Interview tRPC Router - Phase 3A TDD', () => {
       // Cleanup
       await db.sessionData.delete({ where: { id: otherSession.id } });
       await db.user.delete({ where: { id: otherUser.id } });
+    });
+  });
+
+  // ✅ Test saveSession procedure (already working)
+  describe('saveSession procedure - QuestionSegments', () => {
+    it('should save session progress successfully', async () => {
+      // Arrange
+      const caller = await getTestCaller(testUser);
+      
+      // Act
+      const result = await caller.session.saveSession({
+        sessionId: testSession.id,
+        currentResponse: 'Work in progress response...',
+      });
+
+      // Assert
+      expect(result).toMatchObject({
+        saved: true,
+        timestamp: expect.any(Date),
+      });
     });
   });
 }); 

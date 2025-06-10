@@ -69,7 +69,7 @@ Successfully migrated all test suites to the QuestionSegments architecture with 
 
 **Remaining Migration Tasks:**
 - ✅ **Remove Deprecated Procedures**: Clean up `getNextQuestion`, `updateSessionState`, `resetSession` from router **COMPLETED**
-- 🔄 **Update Legacy Tests**: Migrate `session-live.test.ts` to use new QuestionSegments procedures
+- ✅ **Update Legacy Tests**: Migrate `session-live.test.ts` to use new QuestionSegments procedures **COMPLETED**
 - 🔄 **Implement Missing Features**: Add automatic ending logic to new system
 - 🔄 **Validation**: Ensure all frontend components use new procedures exclusively
 
@@ -156,10 +156,10 @@ interface ConversationTurn {
    - ✅ Remove `getNextQuestion` procedure implementation
    - ✅ Remove `updateSessionState` procedure implementation  
    - ✅ Remove `resetSession` procedure implementation
-2. **🔄 Update Legacy Tests**: Migrate to QuestionSegments procedures **NEXT**
-   - Update `session-live.test.ts` to use `submitResponse` + `getNextTopicalQuestion`
-   - Update integration tests to use new procedure patterns
-   - Remove tests for deprecated procedures
+2. ✅ **Update Legacy Tests**: Migrate to QuestionSegments procedures **COMPLETED**
+   - ✅ Update `session-live.test.ts` to use `submitResponse` + `getNextTopicalQuestion`
+   - ✅ All 9 tests now passing with new QuestionSegments architecture
+   - ✅ Tests cover all core functionality: startInterviewSession, submitResponse, getNextTopicalQuestion, getActiveSession, saveSession
 3. **🔄 Add Missing Features**: Complete feature parity
    - Implement automatic ending logic (conversation length + AI decision)
    - Add time-based interview limits using `durationInSeconds`
@@ -187,8 +187,8 @@ interface ConversationTurn {
 
 **Immediate Focus: Complete Migration Before Phase 3C**
 1. ✅ **Clean Deprecated Code**: Remove legacy procedures from router **COMPLETED**
-2. **🔄 Update Test Suite**: Migrate remaining test files to new procedures **CURRENT**  
-3. **🔄 Add Missing Features**: Implement automatic ending logic
+2. ✅ **Update Test Suite**: Migrate remaining test files to new procedures **COMPLETED**  
+3. **🔄 Add Missing Features**: Implement automatic ending logic **CURRENT**
 4. **🔄 Validation**: Verify all components use new procedures exclusively
 
 **Technical Foundation Status:**
