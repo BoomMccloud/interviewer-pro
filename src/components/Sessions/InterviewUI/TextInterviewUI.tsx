@@ -6,6 +6,7 @@
  * - Chat interface at the bottom for user responses
  * - Flex layout design for future modality expansion
  * - Integration with live interview backend procedures
+ * - UPDATED: Now uses QuestionSegments structure with 'ai' role and 'content' field
  */
 
 'use client';
@@ -13,9 +14,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Timer from '~/components/UI/Timer';
 
+// UPDATED: New message structure for QuestionSegments migration
 interface ConversationMessage {
-  role: 'user' | 'model';
-  text: string;
+  role: 'user' | 'ai';  // Changed from 'model' to 'ai'
+  content: string;      // Changed from 'text' to 'content'
   timestamp: Date;
 }
 
@@ -54,7 +56,6 @@ export default function TextInterviewUI({
   isSaving,
   isEnding
 }: TextInterviewUIProps) {
-  const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -92,7 +93,7 @@ export default function TextInterviewUI({
     // Add user message to local history immediately for responsive UI
     const userMessage: ConversationMessage = {
       role: 'user',
-      text: messageText,
+      content: messageText,  // Updated to use 'content' instead of 'text'
       timestamp: new Date(),
     };
     
@@ -196,7 +197,7 @@ export default function TextInterviewUI({
                   }`}
                 >
                   <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {message.text}
+                    {message.content}
                   </div>
                 </div>
               </div>

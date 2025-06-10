@@ -8,9 +8,9 @@ import { continueInterview, getFirstQuestion, continueConversation, getNewTopica
 import { getPersona } from "~/lib/personaService";
 import type { 
   MvpSessionTurn, 
-  SessionReportData, 
-  SessionAnalyticsData, 
-  SessionFeedbackData,
+  // SessionReportData,     // REMOVED: Deprecated with legacy procedures
+  // SessionAnalyticsData,  // REMOVED: Deprecated with legacy procedures  
+  // SessionFeedbackData,   // REMOVED: Deprecated with legacy procedures
   QuestionSegment,
   ConversationTurn
 } from "~/types";
@@ -90,7 +90,7 @@ export const sessionRouter = createTRPCRouter({
       // 1. Ensure user has JdResumeText
       // 2. Call getPersona(input.personaId)
       // 3. Call getFirstQuestion(jdResumeText, persona)
-      // 4. Create SessionData in DB, store initial AI question in history
+      // 4. Create SessionData in DB, store initial AI question in questionSegments
       // 5. Return { sessionId: newSession.id, firstQuestion: aiResponse.questionText, rawAiResponseText: aiResponse.rawAiResponseText }
 
       // Placeholder implementation:
@@ -113,19 +113,16 @@ export const sessionRouter = createTRPCRouter({
 
       const firstQuestionResponse = await getFirstQuestion(jdResumeRecord, persona);
 
+      // FIXED: Create session with QuestionSegments structure instead of history
       const newSession = await db.sessionData.create({
         data: {
           userId: ctx.session.user.id,
           jdResumeTextId: jdResumeRecord.id,
           personaId: input.personaId,
           durationInSeconds: input.durationInSeconds ?? 0,
-          history: [{
-            id: `turn-${Date.now()}-model`,
-            role: "model",
-            text: firstQuestionResponse.questionText,
-            rawAiResponseText: firstQuestionResponse.rawAiResponseText,
-            timestamp: new Date().toISOString(),
-          }] as Prisma.InputJsonValue,
+          // Use questionSegments instead of history field
+          questionSegments: [], // Empty initially - will be populated by startSession
+          currentQuestionIndex: 0,
         },
       });
 
@@ -179,141 +176,23 @@ export const sessionRouter = createTRPCRouter({
       });
     }),
   
-  // Placeholder for submitAnswerToSession
+  // LEGACY PROCEDURE - DEPRECATED in favor of submitResponse (QuestionSegments)
+  // This procedure uses the old history field and conflicts with the new architecture
+  // TODO: Remove this procedure once all frontend code is migrated to use submitResponse
+  /*
   submitAnswerToSession: protectedProcedure
     .input(z.object({ 
       sessionId: z.string(), 
       userAnswer: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
-      // TODO: Implement logic
-      // 1. Fetch session by ID, ensure it's active and belongs to user.
-      // 2. Get persona from session.personaId or session.personaSnapshot.
-      // 3. Get JdResumeText from session.jdResumeTextId.
-      // 4. Append user's answer to history.
-      // 5. Call continueInterview(jdResume, persona, history, userAnswer).
-      // 6. Append AI's response to history.
-      // 7. Update session in DB with new history.
-      // 8. Return { nextQuestion, analysis, feedbackPoints, suggestedAlternative, rawAiResponseText }
-      
-      // Example placeholder:
-      const currentSession = await db.sessionData.findUnique({
-        where: { id: input.sessionId, userId: ctx.session.user.id },
+      // Legacy implementation using history field - DEPRECATED
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'This procedure is deprecated. Use submitResponse instead.',
       });
-      if (!currentSession) throw new Error("Session not found or not authorized.");
-      
-      // Parse history safely using Zod
-      let historyPlaceholder: MvpSessionTurn[] = [];
-      if (currentSession.history) {
-        try {
-          historyPlaceholder = zodMvpSessionTurnArray.parse(currentSession.history);
-        } catch (error) {
-          // Handle parsing error, e.g., log it or throw a specific error
-          console.error("Failed to parse session history:", error);
-          throw new Error("Invalid session history format.");
-        }
-      }
-      
-      const userTurn: MvpSessionTurn = {
-        id: `turn-${Date.now()}-user`,
-        role: "user",
-        text: input.userAnswer,
-        timestamp: new Date(),
-      };
-      historyPlaceholder.push(userTurn);
-
-      // Fetch persona using personaId from the session
-      const persona = await getPersona(currentSession.personaId);
-      if (!persona) throw new Error("Persona not found for session. ID: " + currentSession.personaId);
-
-      const jdResumeRecord = await db.jdResumeText.findUnique({ where: { id: currentSession.jdResumeTextId }});
-      if (!jdResumeRecord) throw new Error("JD/Resume record not found for session.");
-
-      const aiResponse = await continueInterview(jdResumeRecord, persona, [...historyPlaceholder], input.userAnswer);
-      
-      // Determine if this is a conversational follow-up or a new topic
-      // For now, we'll use a simple heuristic: if the response contains analysis/feedback,
-      // it's likely a conversational response. We can make this more sophisticated later.
-      const hasAnalysisOrFeedback = aiResponse.analysis && aiResponse.analysis !== "N/A" && 
-                                   aiResponse.analysis !== "No analysis provided for this answer.";
-      const hasMeaningfulFeedback = aiResponse.feedbackPoints && 
-                                   aiResponse.feedbackPoints.length > 0 && 
-                                   !aiResponse.feedbackPoints.includes("No specific feedback provided.");
-
-      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-      const isConversationalResponse = hasAnalysisOrFeedback || hasMeaningfulFeedback;
-
-      // Create appropriate AI turn based on response type
-      let aiTurn: MvpSessionTurn;
-      let isTopicTransition = false;
-
-      if (isConversationalResponse) {
-        // This is a conversational follow-up - show analysis/feedback in chat
-        let conversationalText = "";
-        
-        if (hasAnalysisOrFeedback) {
-          conversationalText += `${aiResponse.analysis}\n\n`;
-        }
-        
-        if (hasMeaningfulFeedback) {
-          conversationalText += `💡 Key feedback:\n${aiResponse.feedbackPoints?.map(point => `• ${point}`).join('\n')}\n\n`;
-        }
-        
-        // Add the follow-up question to the conversation
-        if (aiResponse.nextQuestion) {
-          conversationalText += `${aiResponse.nextQuestion}`;
-        }
-
-        aiTurn = {
-          id: `turn-${Date.now()}-model`,
-          role: "model",
-          text: conversationalText.trim(),
-          analysis: aiResponse.analysis,
-          feedbackPoints: aiResponse.feedbackPoints,
-          suggestedAlternative: aiResponse.suggestedAlternative,
-          rawAiResponseText: aiResponse.rawAiResponseText,
-          timestamp: new Date(),
-          type: 'conversational', // Mark as conversational response
-        };
-      } else {
-        // This is a new topical question - will update current question section
-        aiTurn = {
-          id: `turn-${Date.now()}-model`,
-          role: "model",
-          text: aiResponse.nextQuestion ?? "Interview completed",
-          analysis: aiResponse.analysis,
-          feedbackPoints: aiResponse.feedbackPoints,
-          suggestedAlternative: aiResponse.suggestedAlternative,
-          rawAiResponseText: aiResponse.rawAiResponseText,
-          timestamp: new Date(),
-          type: 'topic_transition', // Mark as topic transition
-        };
-        isTopicTransition = true;
-      }
-
-      historyPlaceholder.push(aiTurn);
-
-      // Convert to JSON-compatible format for Prisma
-      const historyForDb = historyPlaceholder.map(turn => ({
-        ...turn,
-        timestamp: turn.timestamp.toISOString()
-      })) as Prisma.InputJsonValue;
-
-      await db.sessionData.update({
-        where: { id: input.sessionId },
-        data: { history: historyForDb },
-      });
-
-      return aiResponse;
     }),
-    
-  // Placeholder for getReportBySessionId (if needed for MVP)
-  // getReportBySessionId: protectedProcedure
-  //   .input(z.object({ sessionId: z.string() }))
-  //   .query(async ({ ctx, input }) => {
-  //     // TODO: Implement logic
-  //     return null;
-  //   }),
+  */
 
   // ==========================================
   // Question Generation API - Modality Agnostic
@@ -342,283 +221,38 @@ export const sessionRouter = createTRPCRouter({
   // Phase 2A: Session Reports & Analytics Procedures
   // ==========================================
 
+  // LEGACY PROCEDURES - DEPRECATED due to history field dependency
+  // These procedures use the old history field and need to be rewritten for QuestionSegments
+  // TODO: Rewrite these procedures to work with questionSegments field instead of history
+  
+  /*
   getSessionReport: protectedProcedure
     .input(z.object({ sessionId: z.string() }))
     .query(async ({ ctx, input }): Promise<SessionReportData> => {
-      // Fetch session and validate ownership
-      const session = await db.sessionData.findUnique({
-        where: { 
-          id: input.sessionId,
-          userId: ctx.session.user.id, // Ensure user owns this session
-        },
+      throw new TRPCError({
+        code: 'FORBIDDEN', 
+        message: 'This procedure is deprecated. Needs QuestionSegments migration.',
       });
-
-      if (!session) {
-        throw new Error("Session not found or not authorized");
-      }
-
-      if (session.userId !== ctx.session.user.id) {
-        console.log(`AUTH DEBUG: session.userId=${session.userId}, ctx.session.user.id=${ctx.session.user.id}`);
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Not authorized to access this session',
-        });
-      }
-
-      // Parse session history
-      let history: MvpSessionTurn[] = [];
-      if (session.history) {
-        try {
-          history = zodMvpSessionTurnArray.parse(session.history);
-        } catch (error) {
-          console.error("Failed to parse session history:", error);
-          throw new Error("Invalid session history format");
-        }
-      }
-
-      // Calculate metrics
-      const questionCount = history.filter(turn => turn.role === 'model').length;
-      const answerCount = history.filter(turn => turn.role === 'user').length;
-      const completionPercentage = questionCount > 0 ? (answerCount / questionCount) * 100 : 0;
-
-      // Calculate average response time
-      let averageResponseTime = 0;
-      const responseTimes: number[] = [];
-      
-      for (let i = 0; i < history.length - 1; i++) {
-        const currentTurn = history[i];
-        const nextTurn = history[i + 1];
-        
-        if (currentTurn?.role === 'model' && nextTurn?.role === 'user') {
-          const responseTime = (nextTurn.timestamp.getTime() - currentTurn.timestamp.getTime()) / 1000;
-          responseTimes.push(responseTime);
-        }
-      }
-      
-      if (responseTimes.length > 0) {
-        averageResponseTime = responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
-      }
-
-      return {
-        sessionId: session.id,
-        durationInSeconds: session.durationInSeconds,
-        history,
-        questionCount,
-        completionPercentage,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-        averageResponseTime,
-        personaId: session.personaId,
-        jdResumeTextId: session.jdResumeTextId,
-      };
     }),
 
   getSessionAnalytics: protectedProcedure
     .input(z.object({ sessionId: z.string() }))
     .query(async ({ ctx, input }): Promise<SessionAnalyticsData> => {
-      // Fetch session and validate ownership
-      const session = await db.sessionData.findUnique({
-        where: { 
-          id: input.sessionId,
-          userId: ctx.session.user.id,
-        },
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'This procedure is deprecated. Needs QuestionSegments migration.',
       });
-
-      if (!session) {
-        throw new Error("Session not found or not authorized");
-      }
-
-      if (session.userId !== ctx.session.user.id) {
-        console.log(`AUTH DEBUG: session.userId=${session.userId}, ctx.session.user.id=${ctx.session.user.id}`);
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Not authorized to access this session',
-        });
-      }
-
-      // Parse session history
-      let history: MvpSessionTurn[] = [];
-      if (session.history) {
-        try {
-          history = zodMvpSessionTurnArray.parse(session.history);
-        } catch (error) {
-          console.error("Failed to parse session history:", error);
-          throw new Error("Invalid session history format");
-        }
-      }
-
-      // Calculate analytics
-      const totalQuestions = history.filter(turn => turn.role === 'model').length;
-      const totalAnswers = history.filter(turn => turn.role === 'user').length;
-      const completionPercentage = totalQuestions > 0 ? (totalAnswers / totalQuestions) * 100 : 0;
-      const sessionDurationMinutes = session.durationInSeconds / 60;
-
-      // Calculate response times
-      const responseTimeMetrics: number[] = [];
-      
-      for (let i = 0; i < history.length - 1; i++) {
-        const currentTurn = history[i];
-        const nextTurn = history[i + 1];
-        
-        if (currentTurn?.role === 'model' && nextTurn?.role === 'user') {
-          const responseTime = (nextTurn.timestamp.getTime() - currentTurn.timestamp.getTime()) / 1000;
-          responseTimeMetrics.push(responseTime);
-        }
-      }
-
-      const averageResponseTime = responseTimeMetrics.length > 0 
-        ? responseTimeMetrics.reduce((sum, time) => sum + time, 0) / responseTimeMetrics.length
-        : 0;
-
-      // Calculate performance score (simple algorithm for now)
-      let performanceScore = 0;
-      if (totalQuestions > 0) {
-        const completionWeight = 0.4;
-        const responseTimeWeight = 0.6;
-        
-        // Score based on completion percentage
-        const completionScore = completionPercentage;
-        
-        // Score based on response time (faster is better, cap at reasonable time)
-        let responseTimeScore = 0;
-        if (averageResponseTime > 0) {
-          const idealResponseTime = 60; // 60 seconds is ideal
-          const maxResponseTime = 300; // 5 minutes is poor
-          responseTimeScore = Math.max(0, Math.min(100, 
-            100 - ((averageResponseTime - idealResponseTime) / (maxResponseTime - idealResponseTime)) * 100
-          ));
-        }
-        
-        performanceScore = (completionScore * completionWeight) + (responseTimeScore * responseTimeWeight);
-      }
-
-      return {
-        sessionId: session.id,
-        totalQuestions,
-        totalAnswers,
-        averageResponseTime,
-        responseTimeMetrics,
-        completionPercentage,
-        sessionDurationMinutes,
-        performanceScore: Math.round(performanceScore),
-      };
     }),
 
   getSessionFeedback: protectedProcedure
     .input(z.object({ sessionId: z.string() }))
     .query(async ({ ctx, input }): Promise<SessionFeedbackData> => {
-      // Fetch session and validate ownership
-      const session = await db.sessionData.findUnique({
-        where: { 
-          id: input.sessionId,
-          userId: ctx.session.user.id,
-        },
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'This procedure is deprecated. Needs QuestionSegments migration.',
       });
-
-      if (!session) {
-        throw new Error("Session not found or not authorized");
-      }
-
-      if (session.userId !== ctx.session.user.id) {
-        console.log(`AUTH DEBUG: session.userId=${session.userId}, ctx.session.user.id=${ctx.session.user.id}`);
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Not authorized to access this session',
-        });
-      }
-
-      // Parse session history
-      let history: MvpSessionTurn[] = [];
-      if (session.history) {
-        try {
-          history = zodMvpSessionTurnArray.parse(session.history);
-        } catch (error) {
-          console.error("Failed to parse session history:", error);
-          throw new Error("Invalid session history format");
-        }
-      }
-
-      const totalQuestions = history.filter(turn => turn.role === 'model').length;
-      const totalAnswers = history.filter(turn => turn.role === 'user').length;
-      const isIncompleteSession = totalAnswers < 2; // Minimal threshold
-
-      // Extract feedback from AI turns
-      const aiTurns = history.filter(turn => turn.role === 'model');
-      const feedbackPoints: string[] = [];
-      const analysisPoints: string[] = [];
-
-      aiTurns.forEach(turn => {
-        if (turn.feedbackPoints) {
-          feedbackPoints.push(...turn.feedbackPoints);
-        }
-        if (turn.analysis) {
-          analysisPoints.push(turn.analysis);
-        }
-      });
-
-      // Generate feedback based on session content
-      const strengths: string[] = [];
-      const areasForImprovement: string[] = [];
-      const recommendations: string[] = [];
-
-      if (isIncompleteSession) {
-        recommendations.push('Complete more questions for better assessment');
-        areasForImprovement.push('Session completion');
-      } else {
-        // Extract strengths from feedback points
-        feedbackPoints.forEach(point => {
-          if (point.toLowerCase().includes('good') || point.toLowerCase().includes('clear') || 
-              point.toLowerCase().includes('strong') || point.toLowerCase().includes('relevant')) {
-            strengths.push(point);
-          }
-        });
-
-        // Default strengths if none found
-        if (strengths.length === 0 && feedbackPoints.length > 0) {
-          strengths.push('Engagement with interview questions');
-        }
-      }
-
-      // Calculate overall score
-      let overallScore = 0;
-      if (totalQuestions > 0) {
-        const completionRate = totalAnswers / totalQuestions;
-        const engagementScore = feedbackPoints.length * 10; // 10 points per feedback item
-        overallScore = Math.min(100, Math.round((completionRate * 60) + Math.min(40, engagementScore)));
-      }
-
-      // Generate detailed analysis
-      let detailedAnalysis = '';
-      if (isIncompleteSession) {
-        detailedAnalysis = `This interview session had limited interaction with ${totalAnswers} responses to ${totalQuestions} questions. `;
-        detailedAnalysis += 'A more complete session would provide better insights into your interview performance.';
-      } else {
-        detailedAnalysis = `Analysis of your interview session with ${totalAnswers} responses across ${totalQuestions} questions. `;
-        if (analysisPoints.length > 0) {
-          detailedAnalysis += analysisPoints.join(' ');
-        } else {
-          detailedAnalysis += 'Your responses demonstrated engagement with the interview process.';
-        }
-      }
-
-      // Create skill assessment
-      const skillAssessment: Record<string, number> = {
-        'Communication': isIncompleteSession ? 20 : Math.min(85, 40 + (feedbackPoints.length * 15)),
-        'Technical Knowledge': isIncompleteSession ? 15 : Math.min(90, 30 + (analysisPoints.length * 20)),
-        'Problem Solving': isIncompleteSession ? 25 : Math.min(80, 35 + (totalAnswers * 10)),
-        'Interview Readiness': Math.min(95, overallScore),
-      };
-
-      return {
-        sessionId: session.id,
-        overallScore,
-        strengths,
-        areasForImprovement,
-        recommendations,
-        detailedAnalysis,
-        skillAssessment,
-      };
     }),
+  */
 
   // Phase 3A: Live Interview Session Procedures (TDD Implementation)
   
@@ -706,7 +340,7 @@ export const sessionRouter = createTRPCRouter({
       await ctx.db.sessionData.update({
         where: { id: input.sessionId },
         data: { 
-          questionSegments: [firstQuestionSegment],
+          questionSegments: JSON.parse(JSON.stringify([firstQuestionSegment])) as Prisma.InputJsonValue,
           currentQuestionIndex: 0,
           startTime: new Date()
         },
@@ -725,242 +359,35 @@ export const sessionRouter = createTRPCRouter({
 
   // 🔗 INTEGRATION PHASE: Separated procedures for clean conversation flow
   
-  // ✅ submitResponse - purely conversational responses within same topic
+  // LEGACY PROCEDURE - DEPRECATED due to history field dependency
+  // This conflicts with the new QuestionSegments architecture submitResponse
+  // TODO: Remove once all frontend code migrated to use submitResponse (QuestionSegments)
+  /*
   submitResponse: protectedProcedure
     .input(z.object({
       sessionId: z.string(),
       userResponse: z.string().min(1, "User response cannot be empty").trim(),
     }))
     .mutation(async ({ input, ctx }) => {
-      // Verify session exists and user has access
-      const session = await ctx.db.sessionData.findUnique({
-        where: { id: input.sessionId },
-        include: { jdResumeText: true },
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'This procedure is deprecated. Use the QuestionSegments submitResponse instead.',
       });
-
-      if (!session) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Session not found',
-        });
-      }
-
-      if (session.userId !== ctx.session.user.id) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Not authorized to access this session',
-        });
-      }
-
-      // Parse existing conversation history
-      let history: MvpSessionTurn[] = [];
-      if (session.history) {
-        try {
-          history = zodMvpSessionTurnArray.parse(session.history);
-        } catch (error) {
-          console.error("Failed to parse session history:", error);
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'Invalid session history format',
-          });
-        }
-      }
-
-      // Extract current topic from the most recent topic transition
-      let currentTopic: string | undefined;
-      for (let i = history.length - 1; i >= 0; i--) {
-        const turn = history[i];
-        if (turn && turn.role === 'model' && turn.type === 'topic_transition' && turn.rawAiResponseText) {
-          // Extract topic from question - simple keyword detection
-          const question = turn.text.toLowerCase();
-          if (question.includes('react')) currentTopic = 'React development';
-          else if (question.includes('typescript')) currentTopic = 'TypeScript';
-          else if (question.includes('node') || question.includes('backend')) currentTopic = 'Backend development';
-          else if (question.includes('team') || question.includes('leadership')) currentTopic = 'Team collaboration';
-          else if (question.includes('system') || question.includes('design')) currentTopic = 'System design';
-          else if (question.includes('problem') || question.includes('challenge')) currentTopic = 'Problem solving';
-          else currentTopic = 'General interview discussion';
-          break;
-        }
-      }
-
-      // Add user response to history
-      const userTurn: MvpSessionTurn = {
-        id: `turn-${Date.now()}-user`,
-        role: "user",
-        text: input.userResponse,
-        timestamp: new Date(),
-      };
-      history.push(userTurn);
-
-      // Get persona and call AI service for conversational response
-      const persona = await getPersona(session.personaId);
-      if (!persona) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Persona not found',
-        });
-      }
-
-      // 🔗 Use separated continueConversation function - NO topic transitions, WITH light topic guidance
-      const conversationalResponse = await continueConversation(
-        session.jdResumeText,
-        persona,
-        history,
-        input.userResponse,
-        currentTopic // Pass current topic for light guidance
-      );
-
-      // Create conversational AI turn for chat history
-      const aiTurn: MvpSessionTurn = {
-        id: `turn-${Date.now()}-model`,
-        role: "model",
-        text: conversationalResponse.followUpQuestion,
-        analysis: conversationalResponse.analysis,
-        feedbackPoints: conversationalResponse.feedbackPoints,
-        rawAiResponseText: conversationalResponse.rawAiResponseText,
-        timestamp: new Date(),
-        type: 'conversational', // Mark as conversational response
-      };
-
-      history.push(aiTurn);
-
-      // Update session with new history
-      const historyForDb = history.map(turn => ({
-        ...turn,
-        timestamp: turn.timestamp.toISOString()
-      })) as Prisma.InputJsonValue;
-
-      await ctx.db.sessionData.update({
-        where: { id: input.sessionId },
-        data: { history: historyForDb },
-      });
-
-      return {
-        analysis: conversationalResponse.analysis,
-        feedbackPoints: conversationalResponse.feedbackPoints,
-        followUpQuestion: conversationalResponse.followUpQuestion,
-        conversationHistory: [
-          {
-            role: 'user' as const,
-            content: input.userResponse,
-            timestamp: new Date().toISOString(),
-          },
-          {
-            role: 'ai' as const,
-            content: aiTurn.text,
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      };
     }),
+  */
 
   // ✅ getNextTopicalQuestion - topic transitions only, user-controlled
-  getNextTopicalQuestion: protectedProcedure
+  // LEGACY VERSION - DEPRECATED due to history field dependency  
+  getNextTopicalQuestionLegacy: protectedProcedure
     .input(z.object({
       sessionId: z.string(),
     }))
-    .mutation(async ({ input, ctx }) => {
-      // Verify session exists and user has access
-      const session = await ctx.db.sessionData.findUnique({
-        where: { id: input.sessionId },
-        include: { jdResumeText: true },
+    .mutation(async ({ input: _input, ctx: _ctx }) => {
+      // This legacy procedure uses the history field and is deprecated
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'This legacy procedure is deprecated. Use the QuestionSegments getNextTopicalQuestion instead.',
       });
-
-      if (!session) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Session not found',
-        });
-      }
-
-      if (session.userId !== ctx.session.user.id) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Not authorized to access this session',
-        });
-      }
-
-      // Parse existing conversation history
-      let history: MvpSessionTurn[] = [];
-      if (session.history) {
-        try {
-          history = zodMvpSessionTurnArray.parse(session.history);
-        } catch (error) {
-          console.error("Failed to parse session history:", error);
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'Invalid session history format',
-          });
-        }
-      }
-
-      // Extract covered topics from history for intelligent topic selection
-      const coveredTopics: string[] = [];
-      for (const turn of history) {
-        if (turn.role === 'model' && turn.type === 'topic_transition' && turn.rawAiResponseText) {
-          // Try to extract topic from the AI response
-          const questionMatch = /<QUESTION>(.*?)<\/QUESTION>/s.exec(turn.rawAiResponseText);
-          if (questionMatch) {
-            const question = questionMatch[1]?.toLowerCase() ?? '';
-            // Simple topic detection - can be enhanced
-            if (question.includes('react')) coveredTopics.push('React');
-            if (question.includes('typescript')) coveredTopics.push('TypeScript');
-            if (question.includes('node') || question.includes('backend')) coveredTopics.push('Node.js');
-            if (question.includes('team') || question.includes('leadership')) coveredTopics.push('Leadership');
-            if (question.includes('system') || question.includes('design')) coveredTopics.push('System Design');
-          }
-        }
-      }
-
-      // Get persona
-      const persona = await getPersona(session.personaId);
-      if (!persona) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Persona not found',
-        });
-      }
-
-      // 🔗 Use separated getNewTopicalQuestion function - ONLY topic transitions
-      const topicalResponse = await getNewTopicalQuestion(
-        session.jdResumeText,
-        persona,
-        history,
-        coveredTopics
-      );
-
-      // Create topic transition AI turn
-      const aiTurn: MvpSessionTurn = {
-        id: `turn-${Date.now()}-model`,
-        role: "model",
-        text: topicalResponse.questionText,
-        rawAiResponseText: topicalResponse.rawAiResponseText,
-        timestamp: new Date(),
-        type: 'topic_transition', // Mark as topic transition
-      };
-
-      history.push(aiTurn);
-
-      // Update session with new history
-      const historyForDb = history.map(turn => ({
-        ...turn,
-        timestamp: turn.timestamp.toISOString()
-      })) as Prisma.InputJsonValue;
-
-      await ctx.db.sessionData.update({
-        where: { id: input.sessionId },
-        data: { history: historyForDb },
-      });
-
-      const questionNumber = history.filter(turn => turn.role === 'model' && (!turn.type || turn.type === 'topic_transition')).length;
-
-      return {
-        questionText: topicalResponse.questionText,
-        keyPoints: topicalResponse.keyPoints,
-        questionNumber,
-        coveredTopics, // Return for frontend tracking
-      };
     }),
 
   // 🟢 GREEN PHASE: getNextQuestion procedure
@@ -969,173 +396,12 @@ export const sessionRouter = createTRPCRouter({
       sessionId: z.string(),
       userResponse: z.string(),
     }))
-    .mutation(async ({ input, ctx }) => {
-      // Verify session exists and user has access
-      const session = await ctx.db.sessionData.findUnique({
-        where: { id: input.sessionId },
-        include: { jdResumeText: true },
+    .mutation(async ({ input: _input, ctx: _ctx }) => {
+      // This legacy procedure uses the history field and is deprecated
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'This legacy procedure is deprecated. Use QuestionSegments procedures instead.',
       });
-
-      if (!session) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Session not found',
-        });
-      }
-
-      if (session.userId !== ctx.session.user.id) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Not authorized to access this session',
-        });
-      }
-
-      // Parse existing conversation history
-      let history: MvpSessionTurn[] = [];
-      if (session.history) {
-        try {
-          history = zodMvpSessionTurnArray.parse(session.history);
-        } catch (error) {
-          console.error("Failed to parse session history:", error);
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'Invalid session history format',
-          });
-        }
-      }
-
-      // Add user response to history
-      const userTurn: MvpSessionTurn = {
-        id: `turn-${Date.now()}-user`,
-        role: "user",
-        text: input.userResponse,
-        timestamp: new Date(),
-      };
-      history.push(userTurn);
-
-      // Get persona and call AI service for next question
-      const persona = await getPersona(session.personaId);
-      if (!persona) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Persona not found',
-        });
-      }
-
-      // Call real AI service for next question
-      const aiResponse = await continueInterview(
-        session.jdResumeText,
-        persona,
-        history,
-        input.userResponse
-      );
-
-      // Determine if this is a conversational follow-up or a new topic
-      // For now, we'll use a simple heuristic: if the response contains analysis/feedback,
-      // it's likely a conversational response. We can make this more sophisticated later.
-      const hasAnalysisOrFeedback = aiResponse.analysis && aiResponse.analysis !== "N/A" && 
-                                   aiResponse.analysis !== "No analysis provided for this answer.";
-      const hasMeaningfulFeedback = aiResponse.feedbackPoints && 
-                                   aiResponse.feedbackPoints.length > 0 && 
-                                   !aiResponse.feedbackPoints.includes("No specific feedback provided.");
-
-      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-      const isConversationalResponse = hasAnalysisOrFeedback || hasMeaningfulFeedback;
-
-      // Create appropriate AI turn based on response type
-      let aiTurn: MvpSessionTurn;
-      let isTopicTransition = false;
-
-      if (isConversationalResponse) {
-        // This is a conversational follow-up - show analysis/feedback in chat
-        let conversationalText = "";
-        
-        if (hasAnalysisOrFeedback) {
-          conversationalText += `${aiResponse.analysis}\n\n`;
-        }
-        
-        if (hasMeaningfulFeedback) {
-          conversationalText += `💡 Key feedback:\n${aiResponse.feedbackPoints?.map(point => `• ${point}`).join('\n')}\n\n`;
-        }
-        
-        // Add the follow-up question to the conversation
-        if (aiResponse.nextQuestion) {
-          conversationalText += `${aiResponse.nextQuestion}`;
-        }
-
-        aiTurn = {
-          id: `turn-${Date.now()}-model`,
-          role: "model",
-          text: conversationalText.trim(),
-          analysis: aiResponse.analysis,
-          feedbackPoints: aiResponse.feedbackPoints,
-          suggestedAlternative: aiResponse.suggestedAlternative,
-          rawAiResponseText: aiResponse.rawAiResponseText,
-          timestamp: new Date(),
-          type: 'conversational', // Mark as conversational response
-        };
-      } else {
-        // This is a new topical question - will update current question section
-        aiTurn = {
-          id: `turn-${Date.now()}-model`,
-          role: "model",
-          text: aiResponse.nextQuestion ?? "Interview completed",
-          analysis: aiResponse.analysis,
-          feedbackPoints: aiResponse.feedbackPoints,
-          suggestedAlternative: aiResponse.suggestedAlternative,
-          rawAiResponseText: aiResponse.rawAiResponseText,
-          timestamp: new Date(),
-          type: 'topic_transition', // Mark as topic transition
-        };
-        isTopicTransition = true;
-      }
-
-      history.push(aiTurn);
-
-      // Update session with new history
-      const historyForDb = history.map(turn => ({
-        ...turn,
-        timestamp: turn.timestamp.toISOString()
-      })) as Prisma.InputJsonValue;
-
-      await ctx.db.sessionData.update({
-        where: { id: input.sessionId },
-        data: { history: historyForDb },
-      });
-
-      // Determine if interview is complete
-      const isComplete = !aiResponse.nextQuestion;
-      const questionNumber = history.filter(turn => turn.role === 'model').length;
-
-      // If interview is complete, mark session as ended
-      if (isComplete) {
-        await ctx.db.sessionData.update({
-          where: { id: input.sessionId },
-          data: { endTime: new Date() },
-        });
-      }
-
-      return {
-        nextQuestion: isTopicTransition ? aiResponse.nextQuestion : null, // Only return if topic changed
-        questionNumber,
-        isComplete,
-        isTopicTransition,
-        conversationResponse: isConversationalResponse ? aiTurn.text : null, // Include conversational response
-        analysis: aiResponse.analysis,
-        feedbackPoints: aiResponse.feedbackPoints,
-        conversationHistory: [
-          {
-            role: 'user' as const,
-            content: input.userResponse,
-            timestamp: new Date().toISOString(),
-          },
-          {
-            role: 'ai' as const,
-            content: aiTurn.text,
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      };
     }),
 
   // 🟢 GREEN PHASE: updateSessionState procedure  
@@ -1145,87 +411,11 @@ export const sessionRouter = createTRPCRouter({
       action: z.enum(['pause', 'resume', 'end']),
       currentResponse: z.string().optional(),
     }))
-    .mutation(async ({ input, ctx }) => {
-      // Verify session exists and user has access
-      const session = await ctx.db.sessionData.findUnique({
-        where: { id: input.sessionId },
-      });
-
-      if (!session) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Session not found',
-        });
-      }
-
-      if (session.userId !== ctx.session.user.id) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Not authorized to access this session',
-        });
-      }
-
-      if (input.action === 'pause') {
-        // Parse existing conversation history
-        let history: MvpSessionTurn[] = [];
-        if (session.history) {
-          try {
-            history = zodMvpSessionTurnArray.parse(session.history);
-          } catch (error) {
-            console.error("Failed to parse session history:", error);
-            throw new TRPCError({
-              code: 'INTERNAL_SERVER_ERROR',
-              message: 'Invalid session history format',
-            });
-          }
-        }
-
-        // Add pause entry to history
-        const pauseEntry: MvpSessionTurn = {
-          id: `pause-${Date.now()}`,
-          role: "user", // Use user role but with special type
-          text: input.currentResponse ?? '',
-          type: 'pause',
-          timestamp: new Date(),
-        };
-        history.push(pauseEntry);
-
-        // Update session with pause state in history
-        const historyForDb = history.map(turn => ({
-          ...turn,
-          timestamp: turn.timestamp.toISOString()
-        })) as Prisma.InputJsonValue;
-
-        await ctx.db.sessionData.update({
-          where: { id: input.sessionId },
-          data: { history: historyForDb },
-        });
-
-        return {
-          isPaused: true,
-          lastActivityTime: new Date().toISOString(),
-        };
-      } else if (input.action === 'resume') {
-        return {
-          isPaused: false,
-          lastActivityTime: new Date().toISOString(),
-        };
-      } else if (input.action === 'end') {
-        // Update database to mark session as ended
-        await ctx.db.sessionData.update({
-          where: { id: input.sessionId },
-          data: { endTime: new Date() },
-        });
-
-        return {
-          isCompleted: true,
-          endTime: new Date().toISOString(),
-        };
-      }
-
+    .mutation(async ({ input: _input, ctx: _ctx }) => {
+      // This legacy procedure uses the history field and is deprecated
       throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: 'Invalid action',
+        code: 'FORBIDDEN',
+        message: 'This legacy procedure is deprecated. Use QuestionSegments procedures instead.',
       });
     }),
 
@@ -1234,42 +424,12 @@ export const sessionRouter = createTRPCRouter({
     .input(z.object({
       sessionId: z.string(),
     }))
-    .mutation(async ({ input, ctx }) => {
-      // Verify session exists and user has access
-      const session = await ctx.db.sessionData.findUnique({
-        where: { id: input.sessionId },
+    .mutation(async ({ input: _input, ctx: _ctx }) => {
+      // This legacy procedure uses the history field and is deprecated
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'This legacy procedure is deprecated. Use QuestionSegments procedures instead.',
       });
-
-      if (!session) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Session not found',
-        });
-      }
-
-      if (session.userId !== ctx.session.user.id) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Not authorized to access this session',
-        });
-      }
-
-      // Reset session to fresh state - clear ALL historical data
-      await ctx.db.sessionData.update({
-        where: { id: input.sessionId },
-        data: {
-          startTime: new Date(),   // Reset start time (will be updated when interview actually starts)
-          endTime: null,           // Mark as active again
-          history: [],             // Clear conversation history
-          overallSummary: null,    // Clear any summary
-        },
-      });
-
-      return {
-        sessionId: input.sessionId,
-        isReset: true,
-        message: 'Session reset successfully and ready to restart',
-      };
     }),
 
   // 🟢 COMPLETED: getActiveSession procedure with real data

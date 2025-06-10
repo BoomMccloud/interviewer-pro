@@ -75,7 +75,8 @@ async function createDevSession() {
         personaId: 'hr-recruiter-general',
         jdResumeTextId: jdResumeText.id,
         durationInSeconds: 1800,
-        history: [],
+        questionSegments: [],
+        currentQuestionIndex: 0,
       }
     });
     

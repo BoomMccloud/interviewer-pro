@@ -26,6 +26,8 @@ export default {
     '<rootDir>/tests/*.spec.ts', // Added for tests directly in /tests
     '<rootDir>/tests/server/**/*.test.ts',
     '<rootDir>/tests/server/**/*.spec.ts',
+    '<rootDir>/tests/integration/**/*.test.ts', // Added for integration tests
+    '<rootDir>/tests/integration/**/*.spec.ts', // Added for integration tests
     // Add other backend test locations if necessary, e.g., specific to other subdirectories in /tests
   ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'mjs', 'json', 'node'],

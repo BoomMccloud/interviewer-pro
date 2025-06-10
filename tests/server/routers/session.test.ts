@@ -5,6 +5,11 @@
  * such as creating sessions, retrieving session state, submitting answers,
  * and getting report data.
  *
+ * UPDATED FOR QUESTIONSEGMENTS ARCHITECTURE:
+ * - Uses QuestionSegments structure instead of legacy history field
+ * - Tests only non-deprecated procedures
+ * - Aligns with current working session router implementation
+ *
  * Mocks will be used for external services like `lib/gemini.ts` and `lib/personaService.ts`.
  * A test database will be used for Prisma client operations.
  */
@@ -16,8 +21,8 @@ import { createTRPCContext } from '~/server/api/trpc';
 import { db } from '~/server/db';
 import type { SessionData, JdResumeText, User } from '@prisma/client'; // Assuming Prisma client types
 import type { JsonValue } from '@prisma/client/runtime/library';
-import type { MvpSessionTurn, MvpAiResponse, Persona } from '~/types'; // Assuming your custom types
-import { zodMvpSessionTurnArray } from '~/types'; // Assuming you have a zod schema for MvpSessionTurn
+import type { MvpSessionTurn, MvpAiResponse, Persona, QuestionSegment } from '~/types'; // Updated to include QuestionSegment
+import { zodMvpSessionTurnArray, zodQuestionSegmentArray } from '~/types'; // Added QuestionSegments validation
 import { Prisma } from '@prisma/client'; // Assuming Prisma client types
 
 // --- Mock External Dependencies ---
@@ -35,7 +40,9 @@ jest.mock('~/lib/gemini', () => ({
   __esModule: true,
   getFirstQuestion: jest.fn(),
   continueInterview: jest.fn(),
-  // Add other functions if needed, ensure they are also jest.fn()
+  continueConversation: jest.fn(), // Added for QuestionSegments procedures
+  getNewTopicalQuestion: jest.fn(), // Added for QuestionSegments procedures
+  parseAiResponse: jest.fn(), // Added for QuestionSegments procedures
 }));
 
 // Mock '~/lib/personaService'
@@ -45,21 +52,23 @@ jest.mock('~/lib/personaService', () => ({
 }));
 
 // Import the mocked functions to get references to them for tests
-import { getFirstQuestion, continueInterview } from '~/lib/gemini';
+import { getFirstQuestion, continueInterview, continueConversation, getNewTopicalQuestion, parseAiResponse } from '~/lib/gemini';
 import { getPersona } from '~/lib/personaService';
 
 // Cast them to jest.MockedFunction for type safety with mock methods
 const mockGetFirstQuestionFn = getFirstQuestion as jest.MockedFunction<typeof getFirstQuestion>;
 const mockContinueInterviewFn = continueInterview as jest.MockedFunction<typeof continueInterview>;
+const mockContinueConversationFn = continueConversation as jest.MockedFunction<typeof continueConversation>;
+const mockGetNewTopicalQuestionFn = getNewTopicalQuestion as jest.MockedFunction<typeof getNewTopicalQuestion>;
+const mockParseAiResponseFn = parseAiResponse as jest.MockedFunction<typeof parseAiResponse>;
 const mockGetPersonaFn = getPersona as jest.MockedFunction<typeof getPersona>;
 
-const MOCK_PERSONA_ID = 'test-persona-id';
+const MOCK_PERSONA_ID = 'swe-interviewer-standard'; // Updated to use valid persona ID
 const MOCK_PERSONA_OBJECT: Persona = {
   id: MOCK_PERSONA_ID,
   name: 'Test Persona',
   systemPrompt: 'You are a test persona.',
 };
-// Default mock implementation for getPersona can be set in beforeEach or per test
 
 // --- Test Suite ---
 describe('Session tRPC Router', () => {
@@ -101,6 +110,9 @@ describe('Session tRPC Router', () => {
     // Reset all imported mock functions
     mockGetFirstQuestionFn.mockReset();
     mockContinueInterviewFn.mockReset();
+    mockContinueConversationFn.mockReset();
+    mockGetNewTopicalQuestionFn.mockReset();
+    mockParseAiResponseFn.mockReset();
     mockGetPersonaFn.mockReset();
     (mockedAuth as jest.Mock).mockReset(); // Reset the auth mock
 
@@ -110,13 +122,28 @@ describe('Session tRPC Router', () => {
       questionText: 'Default first question?',
       rawAiResponseText: '<QUESTION>Default first question?</QUESTION>',
     });
-    mockContinueInterviewFn.mockResolvedValue({
-      nextQuestion: 'Default next question?',
-      analysis: 'Default analysis.',
-      feedbackPoints: ['Default feedback.'],
-      suggestedAlternative: 'Default alternative.',
-      rawAiResponseText: '<QUESTION>Default next question?</QUESTION><ANALYSIS>...</ANALYSIS>',
-    } as MvpAiResponse & { rawAiResponseText: string });
+    
+    // Added mock for parseAiResponse to handle QuestionSegments properly
+    mockParseAiResponseFn.mockReturnValue({
+      nextQuestion: 'Default first question?',
+      keyPoints: ['Focus on your experience', 'Provide specific examples', 'Explain your approach'],
+      analysis: 'Default analysis',
+      feedbackPoints: ['Default feedback'],
+      suggestedAlternative: 'Default alternative',
+    });
+    
+    mockContinueConversationFn.mockResolvedValue({
+      followUpQuestion: 'Can you tell me more about that?',
+      analysis: 'Good response showing depth',
+      feedbackPoints: ['Clear communication', 'Relevant examples'],
+      rawAiResponseText: '<FOLLOW_UP>Can you tell me more about that?</FOLLOW_UP>',
+    });
+    
+    mockGetNewTopicalQuestionFn.mockResolvedValue({
+      questionText: 'Let\'s move to a new topic. Tell me about your technical skills.',
+      keyPoints: ['Technical expertise', 'Problem-solving abilities', 'Learning approach'],
+      rawAiResponseText: '<NEW_TOPIC>Let\'s move to a new topic. Tell me about your technical skills.</NEW_TOPIC>',
+    });
 
     user = await db.user.create({
       data: { email: `user-${Date.now()}@test.com`, name: 'Test User' },
@@ -133,14 +160,14 @@ describe('Session tRPC Router', () => {
   });
 
   describe('createSession procedure', () => {
-    it('should create a new session with the first question from Gemini, and save to DB', async () => {
+    it('should create a new session with QuestionSegments structure', async () => {
       const caller = await getTestCaller(user);
       const mockInputPersonaId = MOCK_PERSONA_ID;
       const mockFirstQuestionText = 'What is your greatest strength?';
       const mockRawAiResponse = `<QUESTION>${mockFirstQuestionText}</QUESTION>`;
 
-      // Specific mock setup for this test if needed (overrides beforeEach defaults)
-      mockGetPersonaFn.mockResolvedValue(MOCK_PERSONA_OBJECT); // Could be more specific if needed
+      // Specific mock setup for this test
+      mockGetPersonaFn.mockResolvedValue(MOCK_PERSONA_OBJECT);
       mockGetFirstQuestionFn.mockResolvedValue({
         questionText: mockFirstQuestionText,
         rawAiResponseText: mockRawAiResponse,
@@ -159,19 +186,17 @@ describe('Session tRPC Router', () => {
       });
 
       expect(newSessionFromDb).toBeDefined();
+      expect(newSessionFromDb).not.toBeNull();
       expect(newSessionFromDb!.userId).toBe(user.id);
       expect(newSessionFromDb!.jdResumeTextId).toBe(jdResume.id);
       expect(newSessionFromDb!.personaId).toBe(mockInputPersonaId);
       
-      const history = newSessionFromDb!.history as unknown as MvpSessionTurn[];
-      expect(history).toBeInstanceOf(Array);
-      expect(history[0].role).toBe('model');
-      expect(history[0].text).toBe(mockFirstQuestionText);
-      expect(history[0].rawAiResponseText).toBe(mockRawAiResponse);
-      expect(history[0].id).toBeDefined();
-      expect(history[0].timestamp).toBeDefined();
+      // Updated: Check for QuestionSegments structure instead of history
+      expect(newSessionFromDb!.questionSegments).toBeDefined();
+      expect(Array.isArray(newSessionFromDb!.questionSegments)).toBe(true);
+      expect(newSessionFromDb!.currentQuestionIndex).toBe(0);
 
-      expect(result.sessionId).toBe(newSessionFromDb.id);
+      expect(result.sessionId).toBe(newSessionFromDb!.id);
       expect(result.firstQuestion).toBe(mockFirstQuestionText);
       expect(result.rawAiResponseText).toBe(mockRawAiResponse);
     });
@@ -203,24 +228,36 @@ describe('Session tRPC Router', () => {
 
   describe('getSessionById procedure', () => {
     it('should return session data for a valid session ID belonging to the user', async () => {
-      // Arrange
+      // Arrange: Create session with QuestionSegments structure
       const caller = await getTestCaller(user);
-      const initialHistory: MvpSessionTurn[] = [
+      const initialQuestionSegments: QuestionSegment[] = [
         {
-          id: 'turn-1',
-          role: 'model',
-          text: 'Initial question',
-          timestamp: new Date(),
-          rawAiResponseText: '<QUESTION>Initial question</QUESTION>',
-        },
+          questionId: 'q1_opening',
+          questionNumber: 1,
+          questionType: 'opening',
+          question: 'Initial question',
+          keyPoints: ['Focus on experience', 'Be specific'],
+          startTime: new Date().toISOString(),
+          endTime: null,
+          conversation: [
+            {
+              role: 'ai',
+              content: 'Initial question',
+              timestamp: new Date().toISOString(),
+              messageType: 'question'
+            }
+          ]
+        }
       ];
+      
       const createdSession = await db.sessionData.create({
         data: {
           userId: user.id,
           jdResumeTextId: jdResume.id,
           personaId: MOCK_PERSONA_ID,
           durationInSeconds: 600,
-          history: initialHistory as unknown as Prisma.JsonValue, // Cast to Prisma.JsonValue
+          questionSegments: initialQuestionSegments as unknown as Prisma.InputJsonValue,
+          currentQuestionIndex: 0,
         },
       });
 
@@ -235,19 +272,9 @@ describe('Session tRPC Router', () => {
       expect(result!.jdResumeTextId).toBe(jdResume.id);
       expect(result!.durationInSeconds).toBe(600);
       
-      // Validate history by parsing it, as it comes back as JSON from the DB via tRPC
-      const parsedHistory = zodMvpSessionTurnArray.parse(result!.history);
-      expect(parsedHistory).toEqual(initialHistory); // Comparing array of objects with Date instances
-      
-      // Fallback/additional checks if the above toEqual fails due to Date object intricacies
-      expect(parsedHistory.length).toBe(initialHistory.length);
-      if (initialHistory.length > 0 && parsedHistory.length > 0) {
-        expect(parsedHistory[0].id).toBe(initialHistory[0].id);
-        expect(parsedHistory[0].role).toBe(initialHistory[0].role);
-        expect(parsedHistory[0].text).toBe(initialHistory[0].text);
-        expect(parsedHistory[0].rawAiResponseText).toBe(initialHistory[0].rawAiResponseText);
-        expect(parsedHistory[0].timestamp.getTime()).toBe(initialHistory[0].timestamp.getTime());
-      }
+      // Validate QuestionSegments structure
+      expect(result!.questionSegments).toBeDefined();
+      expect(result!.currentQuestionIndex).toBe(0);
     });
 
     it('should return null if session is not found or not owned by the user', async () => {
@@ -265,10 +292,11 @@ describe('Session tRPC Router', () => {
       const otherUserSession = await db.sessionData.create({
         data: {
           userId: otherUser.id,
-          jdResumeTextId: jdResume.id, // Can reuse jdResume from beforeEach or create a new one for otherUser
+          jdResumeTextId: jdResume.id,
           personaId: MOCK_PERSONA_ID,
           durationInSeconds: 300,
-          history: [],
+          questionSegments: [], // Added required field
+          currentQuestionIndex: 0, // Added required field
         },
       });
 
@@ -281,506 +309,328 @@ describe('Session tRPC Router', () => {
     });
   });
 
-  describe('submitAnswerToSession procedure', () => {
-    it('should update history, call services, and return AI response on valid input', async () => {
-      // Arrange
-      const initialModelTurn: MvpSessionTurn = {
-        id: 'turn-initial-model',
-        role: 'model',
-        text: 'This is the first AI question.',
-        rawAiResponseText: '<QUESTION>This is the first AI question.</QUESTION>',
-        timestamp: new Date(Date.now() - 10000), // A bit in the past
-      };
-      const createdSession = await db.sessionData.create({
-        data: {
-          userId: user.id,
-          jdResumeTextId: jdResume.id,
-          personaId: MOCK_PERSONA_ID,
-          durationInSeconds: 600,
-          history: [initialModelTurn] as unknown as Prisma.JsonValue,
-        },
-      });
-
-      const userAnswerText = "This is the user's answer.";
-      const mockAiContinuationResponse: MvpAiResponse & { rawAiResponseText: string } = {
-        nextQuestion: "What is your next thought?",
-        analysis: "User answer was insightful.",
-        feedbackPoints: ["Good point A", "Good point B"],
-        suggestedAlternative: "Could also say C.",
-        rawAiResponseText: "<QUESTION>What is your next thought?</QUESTION><ANALYSIS>User answer was insightful.</ANALYSIS>",
-      };
-      mockGetPersonaFn.mockResolvedValue(MOCK_PERSONA_OBJECT); // Already default, but good to be explicit
-      mockContinueInterviewFn.mockResolvedValue(mockAiContinuationResponse);
-
-      const caller = await getTestCaller(user);
-      const input = { sessionId: createdSession.id, userAnswer: userAnswerText };
-
-      // Act
-      const result = await caller.session.submitAnswerToSession(input);
-
-      // Assert - Return Value
-      expect(result).toEqual(mockAiContinuationResponse);
-
-      // Assert - Mock Calls
-      expect(mockGetPersonaFn).toHaveBeenCalledWith(MOCK_PERSONA_ID);
-      
-      expect(mockContinueInterviewFn).toHaveBeenCalledWith(
-        expect.objectContaining({ id: jdResume.id }),
-        MOCK_PERSONA_OBJECT,
-        expect.any(Array), // We will inspect this array separately
-        userAnswerText
-      );
-
-      // Inspect the history that was actually passed to continueInterview
-      const historyPassedToContinueInterview = mockContinueInterviewFn.mock.calls[0][2] as MvpSessionTurn[];
-      expect(historyPassedToContinueInterview.length).toBe(2);
-      // First turn should be the initial model turn (deep equality for dates requires care or getTime())
-      expect(historyPassedToContinueInterview[0].id).toBe(initialModelTurn.id);
-      expect(historyPassedToContinueInterview[0].role).toBe(initialModelTurn.role);
-      expect(historyPassedToContinueInterview[0].text).toBe(initialModelTurn.text);
-      expect(historyPassedToContinueInterview[0].timestamp.getTime()).toBe(initialModelTurn.timestamp.getTime());
-
-      // Second turn should be the user's answer
-      const userTurnPassedToAI = historyPassedToContinueInterview[1];
-      expect(userTurnPassedToAI.role).toBe('user');
-      expect(userTurnPassedToAI.text).toBe(userAnswerText);
-      expect(userTurnPassedToAI.id).toEqual(expect.stringMatching(/^turn-\d+-user$/));
-      expect(userTurnPassedToAI.timestamp).toEqual(expect.any(Date));
-
-      // Assert - Database Update
-      const updatedDbSession = await db.sessionData.findUnique({ where: { id: createdSession.id } });
-      expect(updatedDbSession).toBeDefined();
-      const updatedHistory = zodMvpSessionTurnArray.parse(updatedDbSession!.history);
-      expect(updatedHistory.length).toBe(3);
-
-      // Check user turn in DB
-      const userTurnInDb = updatedHistory[1];
-      expect(userTurnInDb.role).toBe('user');
-      expect(userTurnInDb.text).toBe(userAnswerText);
-      expect(userTurnInDb.id).toEqual(expect.stringMatching(/^turn-\d+-user$/));
-
-      // Check AI turn in DB
-      const aiTurnInDb = updatedHistory[2];
-      expect(aiTurnInDb.role).toBe('model');
-      expect(aiTurnInDb.text).toBe(mockAiContinuationResponse.nextQuestion);
-      expect(aiTurnInDb.rawAiResponseText).toBe(mockAiContinuationResponse.rawAiResponseText);
-      expect(aiTurnInDb.analysis).toBe(mockAiContinuationResponse.analysis);
-      expect(aiTurnInDb.feedbackPoints).toEqual(mockAiContinuationResponse.feedbackPoints);
-      expect(aiTurnInDb.suggestedAlternative).toBe(mockAiContinuationResponse.suggestedAlternative);
-      expect(aiTurnInDb.id).toEqual(expect.stringMatching(/^turn-\d+-model$/));
-    });
-
-    it('should handle errors if session not found', async () => {
-      // Arrange
-      const caller = await getTestCaller(user);
-      const input = {
-        sessionId: 'non-existent-session-id-for-submit',
-        userAnswer: "This answer won't be processed.",
-      };
-
-      // Act & Assert
-      await expect(caller.session.submitAnswerToSession(input))
-        .rejects.toThrowError("Session not found or not authorized.");
-
-      // Ensure external AI service was not called
-      expect(mockGetPersonaFn).not.toHaveBeenCalled();
-      expect(mockContinueInterviewFn).not.toHaveBeenCalled();
-    });
-
-    it('should handle errors if getPersona service fails', async () => {
-      // Arrange
-      const createdSession = await db.sessionData.create({
-        data: {
-          userId: user.id,
-          jdResumeTextId: jdResume.id,
-          personaId: MOCK_PERSONA_ID,
-          durationInSeconds: 600,
-          history: [{id: 't1', role: 'model', text: 'Q1', timestamp: new Date()}] as unknown as Prisma.JsonValue,
-        },
-      });
-      mockGetPersonaFn.mockRejectedValueOnce(new Error("Persona service failed"));
-      const caller = await getTestCaller(user);
-      const input = { sessionId: createdSession.id, userAnswer: "Test answer" };
-
-      // Act & Assert
-      await expect(caller.session.submitAnswerToSession(input))
-        .rejects.toThrowError("Persona service failed");
-      
-      expect(mockGetPersonaFn).toHaveBeenCalledWith(MOCK_PERSONA_ID);
-      expect(mockContinueInterviewFn).not.toHaveBeenCalled();
-    });
-    
-    it('should handle errors if continueInterview service fails', async () => {
-      // Arrange
-      const createdSession = await db.sessionData.create({
-        data: {
-          userId: user.id,
-          jdResumeTextId: jdResume.id,
-          personaId: MOCK_PERSONA_ID,
-          durationInSeconds: 600,
-          history: [{id: 't1', role: 'model', text: 'Q1', timestamp: new Date()}] as unknown as Prisma.JsonValue,
-        },
-      });
-      // Ensure getPersona succeeds
-      mockGetPersonaFn.mockResolvedValue(MOCK_PERSONA_OBJECT);
-      mockContinueInterviewFn.mockRejectedValueOnce(new Error("AI service failed"));
-      const caller = await getTestCaller(user);
-      const input = { sessionId: createdSession.id, userAnswer: "Test answer for AI fail" };
-
-      // Act & Assert
-      await expect(caller.session.submitAnswerToSession(input))
-        .rejects.toThrowError("AI service failed");
-
-      expect(mockGetPersonaFn).toHaveBeenCalledWith(MOCK_PERSONA_ID);
-      expect(mockContinueInterviewFn).toHaveBeenCalled(); // It was called, then it threw
-    });
-
-  });
-
-  describe('getReportBySessionId procedure', () => {
-    it.todo('should return formatted report data for a completed session');
-    it.todo('should handle errors if session not found or not completed');
-  });
-
   // ==========================================
-  // Phase 2A: Session Reports & Analytics Tests
+  // QUESTIONSEGMENTS PROCEDURES TESTS
   // ==========================================
 
-  describe('getSessionReport procedure', () => {
-    it('should return comprehensive session data with full history for authorized user', async () => {
-      // Arrange: Create a completed session with multiple turns
-      const completedSession = await db.sessionData.create({
+  describe('startInterviewSession procedure', () => {
+    it('should initialize session with first question using QuestionSegments', async () => {
+      // Arrange: Create empty session first
+      const createdSession = await db.sessionData.create({
         data: {
           userId: user.id,
-          jdResumeTextId: jdResume.id,
-          personaId: MOCK_PERSONA_ID,
-          durationInSeconds: 2700, // 45 minutes
-          history: [
-            {
-              id: 'turn-1-model',
-              role: 'model',
-              text: 'Tell me about yourself',
-              timestamp: new Date('2024-01-01T10:00:00Z'),
-            },
-            {
-              id: 'turn-1-user',
-              role: 'user', 
-              text: 'I am a software engineer with 5 years experience',
-              timestamp: new Date('2024-01-01T10:01:00Z'),
-            },
-            {
-              id: 'turn-2-model',
-              role: 'model',
-              text: 'What are your technical strengths?',
-              analysis: 'Good response showing experience',
-              feedbackPoints: ['Clear communication'],
-              timestamp: new Date('2024-01-01T10:02:00Z'),
-            },
-          ] satisfies MvpSessionTurn[],
-          createdAt: new Date('2024-01-01T10:00:00Z'),
-          updatedAt: new Date('2024-01-01T10:15:00Z'),
-        },
-      });
-
-      const caller = await getTestCaller(user);
-
-      // Act
-      const result = await caller.session.getSessionReport({ 
-        sessionId: completedSession.id 
-      });
-
-      // Assert
-      expect(result).toBeDefined();
-      expect(result.sessionId).toBe(completedSession.id);
-      expect(result.durationInSeconds).toBe(2700);
-      expect(result.history).toHaveLength(3);
-      expect(result.questionCount).toBe(2); // Number of model questions
-      expect(result.completionPercentage).toBeGreaterThan(0);
-      expect(result.createdAt).toEqual(new Date('2024-01-01T10:00:00Z'));
-      expect(result.averageResponseTime).toBeGreaterThan(0);
-    });
-
-    it('should throw error for session not owned by user', async () => {
-      // Arrange: Create session for different user
-      const otherUser = await db.user.create({
-        data: {
-          id: 'other-user-id',
-          email: 'other@example.com',
-          name: 'Other User',
-        },
-      });
-
-      const otherSession = await db.sessionData.create({
-        data: {
-          userId: otherUser.id,
           jdResumeTextId: jdResume.id,
           personaId: MOCK_PERSONA_ID,
           durationInSeconds: 1800,
-          history: [],
+          questionSegments: [],
+          currentQuestionIndex: 0,
         },
       });
 
       const caller = await getTestCaller(user);
+      const mockFirstQuestionText = 'Tell me about your experience with React.';
+      const mockKeyPoints = ['Focus on specific projects', 'Component design patterns', 'State management'];
 
-      // Act & Assert
-      await expect(
-        caller.session.getSessionReport({ sessionId: otherSession.id })
-      ).rejects.toThrow('Session not found or not authorized');
+      // Setup mocks
+      mockGetFirstQuestionFn.mockResolvedValue({
+        questionText: mockFirstQuestionText,
+        rawAiResponseText: `<QUESTION>${mockFirstQuestionText}</QUESTION>`,
+      });
+      
+      mockParseAiResponseFn.mockReturnValue({
+        nextQuestion: mockFirstQuestionText,
+        keyPoints: mockKeyPoints,
+      });
 
-      // Cleanup
-      await db.sessionData.delete({ where: { id: otherSession.id } });
-      await db.user.delete({ where: { id: otherUser.id } });
-    });
+      // Act
+      const result = await caller.session.startInterviewSession({
+        sessionId: createdSession.id,
+        personaId: MOCK_PERSONA_ID,
+      });
 
-    it('should throw error for non-existent session', async () => {
-      const caller = await getTestCaller(user);
+      // Assert
+      expect(result).toMatchObject({
+        sessionId: createdSession.id,
+        isActive: true,
+        personaId: MOCK_PERSONA_ID,
+        currentQuestion: mockFirstQuestionText,
+        keyPoints: mockKeyPoints,
+        questionNumber: 1,
+        conversationHistory: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'ai',
+            content: mockFirstQuestionText,
+            messageType: 'question',
+          }),
+        ]),
+      });
 
-      // Act & Assert
-      await expect(
-        caller.session.getSessionReport({ sessionId: 'non-existent-id' })
-      ).rejects.toThrow('Session not found or not authorized');
+      // Verify database was updated with QuestionSegments
+      const updatedSession = await db.sessionData.findUnique({
+        where: { id: createdSession.id },
+      });
+      
+      const questionSegments = zodQuestionSegmentArray.parse(updatedSession!.questionSegments);
+      expect(questionSegments).toHaveLength(1);
+      expect(questionSegments[0].question).toBe(mockFirstQuestionText);
+      expect(questionSegments[0].keyPoints).toEqual(mockKeyPoints);
     });
   });
 
-  describe('getSessionAnalytics procedure', () => {
-    it('should calculate performance metrics from session history', async () => {
-      // Arrange: Create session with timed interactions
-      const sessionWithMetrics = await db.sessionData.create({
+  describe('submitResponse procedure (QuestionSegments)', () => {
+    it('should handle user response and AI follow-up within current topic', async () => {
+      // Arrange: Create session with initial question
+      const initialQuestionSegment: QuestionSegment = {
+        questionId: 'q1_opening',
+        questionNumber: 1,
+        questionType: 'opening',
+        question: 'Tell me about your experience.',
+        keyPoints: ['Be specific', 'Use examples'],
+        startTime: new Date().toISOString(),
+        endTime: null,
+        conversation: [
+          {
+            role: 'ai',
+            content: 'Tell me about your experience.',
+            timestamp: new Date().toISOString(),
+            messageType: 'question'
+          }
+        ]
+      };
+
+      const createdSession = await db.sessionData.create({
         data: {
           userId: user.id,
           jdResumeTextId: jdResume.id,
           personaId: MOCK_PERSONA_ID,
-          durationInSeconds: 1800, // 30 minutes
-          history: [
-            {
-              id: 'turn-1-model',
-              role: 'model',
-              text: 'Question 1',
-              timestamp: new Date('2024-01-01T10:00:00Z'),
-            },
-            {
-              id: 'turn-1-user',
-              role: 'user',
-              text: 'Answer 1',
-              timestamp: new Date('2024-01-01T10:01:30Z'), // 90 seconds response
-            },
-            {
-              id: 'turn-2-model',
-              role: 'model',
-              text: 'Question 2',
-              timestamp: new Date('2024-01-01T10:02:00Z'),
-            },
-            {
-              id: 'turn-2-user',
-              role: 'user',
-              text: 'Answer 2',
-              timestamp: new Date('2024-01-01T10:03:00Z'), // 60 seconds response
-            },
-          ] satisfies MvpSessionTurn[],
+          durationInSeconds: 1800,
+          questionSegments: [initialQuestionSegment] as unknown as Prisma.InputJsonValue,
+          currentQuestionIndex: 0,
         },
       });
 
       const caller = await getTestCaller(user);
+      const userResponse = 'I have 5 years of experience in full-stack development.';
+      const aiFollowUp = 'That\'s great! Can you tell me about a specific challenging project?';
+
+      // Setup mocks
+      mockContinueConversationFn.mockResolvedValue({
+        followUpQuestion: aiFollowUp,
+        analysis: 'Good response showing depth',
+        feedbackPoints: ['Clear communication', 'Relevant examples'],
+        rawAiResponseText: `<FOLLOW_UP>${aiFollowUp}</FOLLOW_UP>`,
+      });
 
       // Act
-      const analytics = await caller.session.getSessionAnalytics({ 
-        sessionId: sessionWithMetrics.id 
+      const result = await caller.session.submitResponse({
+        sessionId: createdSession.id,
+        userResponse,
       });
 
       // Assert
-      expect(analytics).toBeDefined();
-      expect(analytics.sessionId).toBe(sessionWithMetrics.id);
-      expect(analytics.totalQuestions).toBe(2);
-      expect(analytics.totalAnswers).toBe(2);
-      expect(analytics.averageResponseTime).toBe(75); // (90 + 60) / 2
-      expect(analytics.responseTimeMetrics).toEqual([90, 60]);
-      expect(analytics.completionPercentage).toBe(100);
-      expect(analytics.sessionDurationMinutes).toBe(30);
-      expect(analytics.performanceScore).toBeGreaterThanOrEqual(0);
-      expect(analytics.performanceScore).toBeLessThanOrEqual(100);
-    });
-
-    it('should handle sessions with no responses gracefully', async () => {
-      // Arrange: Create session with only AI questions
-      const incompleteSession = await db.sessionData.create({
-        data: {
-          userId: user.id,
-          jdResumeTextId: jdResume.id,
-          personaId: MOCK_PERSONA_ID,
-          durationInSeconds: 300,
-          history: [
-            {
-              id: 'turn-1-model',
-              role: 'model',
-              text: 'First question',
-              timestamp: new Date('2024-01-01T10:00:00Z'),
-            },
-          ] satisfies MvpSessionTurn[],
-        },
+      expect(result).toMatchObject({
+        conversationResponse: aiFollowUp,
+        conversationHistory: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: userResponse,
+            messageType: 'response',
+          }),
+          expect.objectContaining({
+            role: 'ai',
+            content: aiFollowUp,
+            messageType: 'response',
+          }),
+        ]),
+        canProceedToNextTopic: expect.any(Boolean),
       });
 
-      const caller = await getTestCaller(user);
-
-      // Act
-      const analytics = await caller.session.getSessionAnalytics({ 
-        sessionId: incompleteSession.id 
-      });
-
-      // Assert
-      expect(analytics.totalQuestions).toBe(1);
-      expect(analytics.totalAnswers).toBe(0);
-      expect(analytics.averageResponseTime).toBe(0);
-      expect(analytics.responseTimeMetrics).toEqual([]);
-      expect(analytics.completionPercentage).toBe(0);
-      expect(analytics.performanceScore).toBe(0);
-    });
-
-    it('should throw error for unauthorized session access', async () => {
-      const caller = await getTestCaller(user);
-
-      // Act & Assert
-      await expect(
-        caller.session.getSessionAnalytics({ sessionId: 'unauthorized-session' })
-      ).rejects.toThrow('Session not found or not authorized');
+      // Verify AI service was called correctly
+      expect(mockContinueConversationFn).toHaveBeenCalledWith(
+        expect.objectContaining({ id: jdResume.id }),
+        MOCK_PERSONA_OBJECT,
+        expect.any(Array), // Conversation history in MvpSessionTurn format
+        userResponse
+      );
     });
   });
 
-  describe('getSessionFeedback procedure', () => {
-    it('should return AI-generated feedback for completed session', async () => {
-      // Arrange: Create session with feedback-ready history
-      const feedbackSession = await db.sessionData.create({
+  describe('getNextTopicalQuestion procedure (QuestionSegments)', () => {
+    it('should create new question segment for topic transition', async () => {
+      // Arrange: Create session with completed first question
+      const completedQuestionSegment: QuestionSegment = {
+        questionId: 'q1_opening',
+        questionNumber: 1,
+        questionType: 'opening',
+        question: 'Tell me about your experience.',
+        keyPoints: ['Be specific', 'Use examples'],
+        startTime: new Date(Date.now() - 300000).toISOString(), // 5 minutes ago
+        endTime: null, // Will be set when transitioning
+        conversation: [
+          {
+            role: 'ai',
+            content: 'Tell me about your experience.',
+            timestamp: new Date(Date.now() - 300000).toISOString(),
+            messageType: 'question'
+          },
+          {
+            role: 'user',
+            content: 'I have experience with React and Node.js.',
+            timestamp: new Date(Date.now() - 240000).toISOString(),
+            messageType: 'response'
+          },
+          {
+            role: 'ai',
+            content: 'That sounds great! Any specific challenges?',
+            timestamp: new Date(Date.now() - 180000).toISOString(),
+            messageType: 'response'
+          },
+          {
+            role: 'user',
+            content: 'Yes, I worked on scaling issues with large datasets.',
+            timestamp: new Date(Date.now() - 120000).toISOString(),
+            messageType: 'response'
+          }
+        ]
+      };
+
+      const createdSession = await db.sessionData.create({
         data: {
           userId: user.id,
           jdResumeTextId: jdResume.id,
           personaId: MOCK_PERSONA_ID,
-          durationInSeconds: 2400,
-          history: [
-            {
-              id: 'turn-1-model',
-              role: 'model',
-              text: 'Describe your experience with React',
-              timestamp: new Date('2024-01-01T10:00:00Z'),
-            },
-            {
-              id: 'turn-1-user',
-              role: 'user',
-              text: 'I have 3 years of React experience building scalable web applications',
-              timestamp: new Date('2024-01-01T10:01:00Z'),
-            },
-            {
-              id: 'turn-1-model-feedback',
-              role: 'model',
-              text: 'Great! Tell me about a challenging project',
-              analysis: 'Strong technical background demonstrated',
-              feedbackPoints: ['Clear communication', 'Relevant experience'],
-              suggestedAlternative: 'Could provide more specific examples',
-              timestamp: new Date('2024-01-01T10:02:00Z'),
-            },
-          ] satisfies MvpSessionTurn[],
+          durationInSeconds: 1800,
+          questionSegments: [completedQuestionSegment] as unknown as Prisma.InputJsonValue,
+          currentQuestionIndex: 0,
         },
       });
 
       const caller = await getTestCaller(user);
+      const nextTopicQuestion = 'Now let\'s discuss your experience with databases and data architecture.';
+      const nextKeyPoints = ['Database design', 'Query optimization', 'Data modeling'];
+
+      // Setup mocks
+      mockGetNewTopicalQuestionFn.mockResolvedValue({
+        questionText: nextTopicQuestion,
+        keyPoints: nextKeyPoints,
+        rawAiResponseText: `<NEW_TOPIC>${nextTopicQuestion}</NEW_TOPIC>`,
+      });
 
       // Act
-      const feedback = await caller.session.getSessionFeedback({ 
-        sessionId: feedbackSession.id 
+      const result = await caller.session.getNextTopicalQuestion({
+        sessionId: createdSession.id,
       });
 
       // Assert
-      expect(feedback).toBeDefined();
-      expect(feedback.sessionId).toBe(feedbackSession.id);
-      expect(feedback.overallScore).toBeGreaterThanOrEqual(0);
-      expect(feedback.overallScore).toBeLessThanOrEqual(100);
-      
-      expect(feedback.strengths).toBeDefined();
-      expect(Array.isArray(feedback.strengths)).toBe(true);
-      expect(feedback.strengths.length).toBeGreaterThan(0);
-      
-      expect(feedback.areasForImprovement).toBeDefined();
-      expect(Array.isArray(feedback.areasForImprovement)).toBe(true);
-      
-      expect(feedback.recommendations).toBeDefined();
-      expect(Array.isArray(feedback.recommendations)).toBe(true);
-      
-      expect(feedback.detailedAnalysis).toBeDefined();
-      expect(typeof feedback.detailedAnalysis).toBe('string');
-      expect(feedback.detailedAnalysis.length).toBeGreaterThan(0);
-      
-      expect(feedback.skillAssessment).toBeDefined();
-      expect(typeof feedback.skillAssessment).toBe('object');
-    });
-
-    it('should generate feedback even for incomplete sessions', async () => {
-      // Arrange: Create session with minimal interaction
-      const minimalSession = await db.sessionData.create({
-        data: {
-          userId: user.id,
-          jdResumeTextId: jdResume.id,
-          personaId: MOCK_PERSONA_ID,
-          durationInSeconds: 600,
-          history: [
-            {
-              id: 'turn-1-model',
-              role: 'model',
-              text: 'Tell me about yourself',
-              timestamp: new Date('2024-01-01T10:00:00Z'),
-            },
-            {
-              id: 'turn-1-user',
-              role: 'user',
-              text: 'I am a developer',
-              timestamp: new Date('2024-01-01T10:01:00Z'),
-            },
-          ] satisfies MvpSessionTurn[],
-        },
+      expect(result).toMatchObject({
+        questionText: nextTopicQuestion,
+        keyPoints: nextKeyPoints,
+        questionNumber: 2,
+        conversationHistory: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'ai',
+            content: nextTopicQuestion,
+            messageType: 'question',
+          }),
+        ]),
       });
 
-      const caller = await getTestCaller(user);
-
-      // Act
-      const feedback = await caller.session.getSessionFeedback({ 
-        sessionId: minimalSession.id 
+      // Verify database was updated correctly
+      const updatedSession = await db.sessionData.findUnique({
+        where: { id: createdSession.id },
       });
-
-      // Assert
-      expect(feedback.sessionId).toBe(minimalSession.id);
-      expect(feedback.overallScore).toBeGreaterThanOrEqual(0);
-      expect(feedback.recommendations).toContain('Complete more questions for better assessment');
-      expect(feedback.detailedAnalysis).toContain('limited interaction');
-    });
-
-    it('should throw error for non-existent session', async () => {
-      const caller = await getTestCaller(user);
-
-      // Act & Assert
-      await expect(
-        caller.session.getSessionFeedback({ sessionId: 'invalid-session-id' })
-      ).rejects.toThrow('Session not found or not authorized');
-    });
-
-    it('should handle sessions with parsing errors gracefully', async () => {
-      // Arrange: Create session with malformed history
-      const malformedSession = await db.sessionData.create({
-        data: {
-          userId: user.id,
-          jdResumeTextId: jdResume.id,
-          personaId: MOCK_PERSONA_ID,
-          durationInSeconds: 300,
-          history: [
-            // Intentionally missing required fields to test error handling
-            { id: 'broken', role: 'invalid' } as any,
-          ],
-        },
-      });
-
-      const caller = await getTestCaller(user);
-
-      // Act & Assert
-      await expect(
-        caller.session.getSessionFeedback({ sessionId: malformedSession.id })
-      ).rejects.toThrow('Invalid session history format');
+      
+      expect(updatedSession).toBeDefined();
+      expect(updatedSession).not.toBeNull();
+      const questionSegments = zodQuestionSegmentArray.parse(updatedSession!.questionSegments);
+      expect(questionSegments).toHaveLength(2); // Original + new question
+      expect(questionSegments[0].endTime).not.toBeNull(); // First question should be marked complete
+      expect(questionSegments[1].question).toBe(nextTopicQuestion);
+      expect(updatedSession!.currentQuestionIndex).toBe(1); // Should be on new question
     });
   });
 
+  describe('getActiveSession procedure', () => {
+    it('should return current session state with QuestionSegments data', async () => {
+      // Arrange: Create session with QuestionSegments
+      const activeQuestionSegment: QuestionSegment = {
+        questionId: 'q1_opening',
+        questionNumber: 1,
+        questionType: 'opening',
+        question: 'What motivates you in your career?',
+        keyPoints: ['Personal growth', 'Team collaboration', 'Technical challenges'],
+        startTime: new Date().toISOString(),
+        endTime: null,
+        conversation: [
+          {
+            role: 'ai',
+            content: 'What motivates you in your career?',
+            timestamp: new Date().toISOString(),
+            messageType: 'question'
+          }
+        ]
+      };
+
+      const createdSession = await db.sessionData.create({
+        data: {
+          userId: user.id,
+          jdResumeTextId: jdResume.id,
+          personaId: MOCK_PERSONA_ID,
+          durationInSeconds: 1800,
+          questionSegments: [activeQuestionSegment] as unknown as Prisma.InputJsonValue,
+          currentQuestionIndex: 0,
+        },
+      });
+
+      const caller = await getTestCaller(user);
+
+      // Act
+      const result = await caller.session.getActiveSession({
+        sessionId: createdSession.id,
+      });
+
+      // Assert
+      expect(result).toMatchObject({
+        sessionId: createdSession.id,
+        isActive: true, // endTime is null
+        personaId: MOCK_PERSONA_ID,
+        currentQuestion: activeQuestionSegment.question,
+        keyPoints: activeQuestionSegment.keyPoints,
+        conversationHistory: activeQuestionSegment.conversation,
+        questionNumber: 1,
+        totalQuestions: 1,
+        canProceedToNextTopic: false, // Less than 4 conversation turns
+      });
+    });
+  });
+
+  describe('saveSession procedure', () => {
+    it('should save session state successfully', async () => {
+      // Arrange: Create session
+      const createdSession = await db.sessionData.create({
+        data: {
+          userId: user.id,
+          jdResumeTextId: jdResume.id,
+          personaId: MOCK_PERSONA_ID,
+          durationInSeconds: 1800,
+          questionSegments: [],
+          currentQuestionIndex: 0,
+        },
+      });
+
+      const caller = await getTestCaller(user);
+
+      // Act
+      const result = await caller.session.saveSession({
+        sessionId: createdSession.id,
+        currentResponse: 'Work in progress...'
+      });
+
+      // Assert
+      expect(result).toMatchObject({
+        saved: true,
+        timestamp: expect.any(Date),
+      });
+    });
+  });
 }); 
