@@ -426,7 +426,7 @@ describe('Session Live Interview tRPC Router - QuestionSegments Migration', () =
       const updatedSession = await db.sessionData.findUnique({
         where: { id: testSession.id },
       });
-      const questionSegments = updatedSession?.questionSegments as QuestionSegment[];
+      const questionSegments = updatedSession?.questionSegments as unknown as QuestionSegment[];
       expect(questionSegments[0]?.endTime).toBeTruthy(); // First question marked complete
       expect(questionSegments).toHaveLength(2); // New question segment added
     });
@@ -538,7 +538,7 @@ describe('Session Live Interview tRPC Router - QuestionSegments Migration', () =
       expect(completedSession?.endTime).toBeTruthy(); // Interview marked as completed
       
       // Verify the 3rd question was marked as completed
-      const finalQuestionSegments = completedSession?.questionSegments as QuestionSegment[];
+      const finalQuestionSegments = completedSession?.questionSegments as unknown as QuestionSegment[];
       expect(finalQuestionSegments[2]?.endTime).toBeTruthy(); // 3rd question marked complete
     });
   });
@@ -666,8 +666,45 @@ describe('Session Live Interview tRPC Router - QuestionSegments Migration', () =
       // Assert
       expect(result).toMatchObject({
         saved: true,
+        ended: false,
         timestamp: expect.any(Date),
       });
+    });
+
+    it('should end session when endSession parameter is true', async () => {
+      // Arrange
+      const caller = await getTestCaller(testUser);
+      
+      // Verify session is initially active (endTime should be null)
+      const initialSession = await db.sessionData.findUnique({
+        where: { id: testSession.id }
+      });
+      expect(initialSession?.endTime).toBeNull();
+      
+      // Act: End the session
+      const result = await caller.session.saveSession({
+        sessionId: testSession.id,
+        endSession: true
+      });
+
+      // Assert: Response indicates session was ended
+      expect(result).toMatchObject({
+        saved: true,
+        ended: true,
+        timestamp: expect.any(Date),
+      });
+      
+      // Verify endTime was set in database
+      const endedSession = await db.sessionData.findUnique({
+        where: { id: testSession.id }
+      });
+      expect(endedSession?.endTime).toBeTruthy();
+      expect(endedSession?.endTime).toBeInstanceOf(Date);
+      
+      // Verify endTime is recent (within last few seconds)
+      const now = new Date();
+      const timeDiff = now.getTime() - endedSession!.endTime!.getTime();
+      expect(timeDiff).toBeLessThan(5000); // Less than 5 seconds ago
     });
   });
 }); 

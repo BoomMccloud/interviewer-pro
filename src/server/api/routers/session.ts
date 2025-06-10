@@ -795,7 +795,8 @@ export const sessionRouter = createTRPCRouter({
   saveSession: protectedProcedure
     .input(z.object({
       sessionId: z.string(),
-      currentResponse: z.string().optional()
+      currentResponse: z.string().optional(),
+      endSession: z.boolean().optional().default(false)
     }))
     .mutation(async ({ ctx, input }) => {
       // Fetch session with validation
@@ -807,15 +808,26 @@ export const sessionRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
       }
 
-      // For save, we don't modify conversation history
-      // Just update the lastActivityTime or add a save marker if needed
+      // Prepare update data
+      const updateData: { updatedAt: Date; endTime?: Date } = { 
+        updatedAt: new Date() 
+      };
+      
+      // If ending session, set endTime to mark completion
+      if (input.endSession) {
+        updateData.endTime = new Date();
+      }
       
       await ctx.db.sessionData.update({
         where: { id: input.sessionId },
-        data: { updatedAt: new Date() }
+        data: updateData
       });
 
-      return { saved: true, timestamp: new Date() };
+      return { 
+        saved: true, 
+        ended: input.endSession || false,
+        timestamp: new Date() 
+      };
     }),
 });
 

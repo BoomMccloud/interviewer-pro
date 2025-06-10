@@ -221,6 +221,20 @@ export default function SessionPage() {
     alert('Save functionality temporarily disabled during migration');
   };
 
+  // 🔗 NEW: Dedicated mutation for ending sessions
+  const endSession = api.session.saveSession.useMutation({
+    onSuccess: (result) => {
+      if (result.ended) {
+        console.log('Session ended successfully, navigating to report');
+        router.push(`/sessions/${sessionId}/report`);
+      }
+    },
+    onError: (error) => {
+      console.error('Failed to end session:', error);
+      alert('Failed to end interview session. Please try again.');
+    }
+  });
+
   const handleEnd = async () => {
     console.log('Ending session');
     
@@ -233,9 +247,17 @@ export default function SessionPage() {
       return;
     }
     
-    // TODO: Implement end functionality with new QuestionSegments procedures
-    // For now, just navigate to report
-    router.push(`/sessions/${sessionId}/report`);
+    try {
+      // End the session by setting endTime in database
+      await endSession.mutateAsync({ 
+        sessionId, 
+        endSession: true 
+      });
+      // Navigation happens in onSuccess callback
+    } catch (error) {
+      // Error handling happens in onError callback
+      console.error('Error ending session:', error);
+    }
   };
 
   const handleRestartSession = () => {
@@ -396,8 +418,8 @@ export default function SessionPage() {
               isGettingNextTopic={getNextTopicalQuestion.isPending}
               onSave={handleSave}
               onEnd={handleEnd}
-              isSaving={false} // Temporary: was updateSessionState.isPending
-              isEnding={false} // Temporary: was updateSessionState.isPending
+              isSaving={false} // TODO: Will be implemented in Phase 4B with handleSave
+              isEnding={endSession.isPending}
             />
           );
         
@@ -443,8 +465,8 @@ export default function SessionPage() {
               isGettingNextTopic={getNextTopicalQuestion.isPending}
               onSave={handleSave}
               onEnd={handleEnd}
-              isSaving={false} // Temporary: was updateSessionState.isPending
-              isEnding={false} // Temporary: was updateSessionState.isPending
+              isSaving={false} // TODO: Will be implemented in Phase 4B with handleSave
+              isEnding={endSession.isPending}
             />
           );
       }
