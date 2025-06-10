@@ -45,9 +45,7 @@ export default function MvpSessionHistoryList({
     return 'In Progress';
   };
 
-  const getQuestionCount = (session: Omit<SessionData, 'history'> & { history: MvpSessionTurn[] }) => {
-    return session.history.filter(turn => turn.role === 'model').length;
-  };
+
 
   const handleSessionClick = (sessionId: string) => {
     if (onSessionClick) {
@@ -112,7 +110,6 @@ export default function MvpSessionHistoryList({
 
           <div className="flex justify-between items-center text-sm text-gray-600">
             <div className="flex gap-4">
-              <span>{getQuestionCount(session)} questions</span>
               {session.endTime && (
                 <span>
                   Duration: {formatDuration(Math.floor((new Date(session.endTime).getTime() - new Date(session.startTime).getTime()) / 1000))}
