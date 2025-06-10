@@ -52,25 +52,35 @@ export default function SessionPage() {
     }
   });
   
-  const resetSession = api.session.resetSession.useMutation({
-    onSuccess: () => {
-      // After reset, start the session with the ORIGINAL persona (not hard-coded)
+  // 🔗 NEW: Use saveSession + startSession combination to replace deprecated resetSession
+  const saveSession = api.session.saveSession.useMutation({
+    onError: (error) => {
+      console.error('Failed to save session during reset:', error);
+      setSessionState(SESSION_STATES.ERROR);
+    }
+  });
+
+  const handleResetSession = async () => {
+    try {
+      // Step 1: Save/complete current session
+      await saveSession.mutateAsync({ sessionId });
+      
+      // Step 2: Start fresh session with original persona
       const sessionPersonaId = activeSession.data?.personaId;
       const validPersonaIds = Object.values(PERSONA_IDS) as string[];
       const personaId: PersonaId = (validPersonaIds.includes(sessionPersonaId ?? '')) 
         ? sessionPersonaId as PersonaId
         : PERSONA_IDS.HR_RECRUITER_GENERAL;
       
-      startSession.mutate({ 
+      await startSession.mutateAsync({ 
         sessionId, 
         personaId: personaId  // ✅ Use original persona from the session
       });
-    },
-    onError: (error) => {
+    } catch (error) {
       console.error('Failed to reset session:', error);
       setSessionState(SESSION_STATES.ERROR);
     }
-  });
+  };
   
   // 🔗 NEW: Use separated submitResponse for conversational responses
   const submitResponse = api.session.submitResponse.useMutation({
@@ -229,8 +239,14 @@ export default function SessionPage() {
   };
 
   const handleRestartSession = () => {
-    // TODO: Implement restart with new QuestionSegments procedures
-    alert('Restart functionality temporarily disabled during migration');
+    // Confirm before restarting the session
+    const confirmed = window.confirm(
+      'Are you sure you want to restart this interview session? This will end the current session and start fresh with the same persona.'
+    );
+    
+    if (confirmed) {
+      void handleResetSession();
+    }
   };
 
   const handleViewReport = () => {
@@ -238,7 +254,7 @@ export default function SessionPage() {
   };
 
   // Loading state
-  if (sessionState === SESSION_STATES.LOADING || startSession.isPending || resetSession.isPending) {
+  if (sessionState === SESSION_STATES.LOADING || startSession.isPending || saveSession.isPending) {
     return (
       <div className="h-screen bg-white dark:bg-slate-900 flex items-center justify-center">
         <div className="text-center">
@@ -249,7 +265,7 @@ export default function SessionPage() {
           />
           <p className="text-gray-600 dark:text-gray-400">
             {sessionState === SESSION_STATES.LOADING ? 'Loading session...' : 
-             resetSession.isPending ? 'Resetting session...' : 
+             saveSession.isPending ? 'Resetting session...' : 
              'Starting your interview session...'}
           </p>
         </div>

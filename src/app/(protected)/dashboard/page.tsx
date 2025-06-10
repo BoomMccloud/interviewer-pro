@@ -12,12 +12,10 @@ import MvpJdResumeInputForm from '~/components/MvpJdResumeInputForm';
 import MvpSessionHistoryList from '~/components/MvpSessionHistoryList';
 import Spinner from '~/components/UI/Spinner';
 import { api } from '~/trpc/react';
-import type { MvpSessionTurn } from '~/types';
-import { zodMvpSessionTurnArray } from '~/types';
+import type { MvpSessionTurn, QuestionSegment } from '~/types';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const utils = api.useUtils();
 
   // Fetch data using tRPC hooks with proper patterns
   const { 
@@ -38,14 +36,34 @@ export default function DashboardPage() {
   const sessionHistory = React.useMemo(() => {
     return rawSessionHistory.map(session => {
       let history: MvpSessionTurn[] = [];
-      if (session.history) {
-        try {
-          history = zodMvpSessionTurnArray.parse(session.history);
-        } catch (error) {
-          console.error('Failed to parse session history:', error);
-          history = [];
+      
+              // Extract conversation history from questionSegments (new architecture)
+        if (session.questionSegments) {
+          try {
+            const questionSegments: QuestionSegment[] = Array.isArray(session.questionSegments) 
+              ? session.questionSegments as unknown as QuestionSegment[]
+              : JSON.parse(session.questionSegments as string) as QuestionSegment[];
+            
+            // Flatten all conversations from all question segments into a single history array
+            history = questionSegments.flatMap((segment: QuestionSegment) => {
+              if (!segment.conversation || !Array.isArray(segment.conversation)) {
+                return [];
+              }
+              
+              return segment.conversation.map((turn, turnIndex: number) => ({
+                id: `${segment.questionId}-${turnIndex}`,
+                role: turn.role === 'ai' ? 'model' as const : turn.role as 'user', // Map 'ai' to 'model' for MvpSessionTurn
+                text: turn.content,
+                timestamp: new Date(turn.timestamp),
+                type: turn.messageType === 'question' ? 'topic_transition' as const : 'conversational' as const
+              }));
+            });
+          } catch (error) {
+            console.error('Failed to parse session questionSegments:', error);
+            history = [];
+          }
         }
-      }
+      
       return {
         ...session,
         history,

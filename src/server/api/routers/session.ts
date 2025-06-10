@@ -58,7 +58,6 @@ async function generateQuestionForSession(
   const questionResult = await getFirstQuestion(jdResumeText, persona);
   
   // Parse the AI response to extract structured data
-  const { parseAiResponse } = await import('~/lib/gemini');
   const parsedResponse = parseAiResponse(questionResult.rawAiResponseText);
 
   return {

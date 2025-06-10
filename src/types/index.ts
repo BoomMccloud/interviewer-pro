@@ -378,48 +378,7 @@ export interface StartInterviewSessionResponse {
   conversationHistory: MvpSessionTurn[];
 }
 
-/**
- * Request format for getting next question
- */
-export interface GetNextQuestionRequest {
-  sessionId: string;
-  userResponse: string;
-}
 
-/**
- * Response format for getting next question
- */
-export interface GetNextQuestionResponse {
-  nextQuestion: string | null; // null indicates interview completion
-  questionNumber: number;
-  isComplete: boolean;
-  conversationHistory: MvpSessionTurn[];
-}
-
-/**
- * Request format for updating session state
- */
-export interface UpdateSessionStateRequest {
-  sessionId: string;
-  action: 'pause' | 'resume' | 'end';
-  currentResponse?: string;
-}
-
-/**
- * Response format for updating session state
- */
-export interface UpdateSessionStateResponse {
-  status: 'active' | 'paused' | 'completed';
-  lastActivityTime: string;
-  endTime?: string;
-}
-
-/**
- * Request format for getting active session
- */
-export interface GetActiveSessionRequest {
-  sessionId: string;
-}
 
 // ==============================================
 // Zod Schemas for Phase 3A Types
@@ -458,20 +417,7 @@ export const zodStartInterviewSessionRequest = z.object({
   personaId: z.string(),
 });
 
-export const zodGetNextQuestionRequest = z.object({
-  sessionId: z.string(),
-  userResponse: z.string(),
-});
 
-export const zodUpdateSessionStateRequest = z.object({
-  sessionId: z.string(),
-  action: z.enum(['pause', 'resume', 'end']),
-  currentResponse: z.string().optional(),
-});
-
-export const zodGetActiveSessionRequest = z.object({
-  sessionId: z.string(),
-});
 
 // ===================================================================
 // Question Generation API Types
