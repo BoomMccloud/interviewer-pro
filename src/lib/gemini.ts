@@ -152,6 +152,11 @@ async function processStream(streamResponse: AsyncIterable<GenerateContentRespon
  * @param rawResponse - The raw text string received from the Gemini API.
  * @returns A structured object containing the extracted parts.
  */
+/**
+ * @deprecated This function is for legacy structured AI responses only.
+ * Modern functions use direct response processing or specialized parsers.
+ * Will be removed in a future version.
+ */
 export function parseAiResponse(rawResponse: string): MvpAiResponse {
     const cleanedResponse = rawResponse ? rawResponse.trim() : "";
 
@@ -236,13 +241,14 @@ export async function getFirstQuestion(
          throw new Error('Gemini returned an empty response.');
     }
 
-    // Parse the full response to extract the first question
-    const parsed = parseAiResponse(rawAiResponseText);
+    // For the first question, we use the AI response directly (modern approach)
+    // The AI generates natural, conversational questions without requiring structured parsing
+    const questionText = rawAiResponseText.trim();
 
     // For the first question, we only need the question text for the frontend,
     // but we save the raw response text to the DB for history context in future turns.
     return {
-        questionText: parsed.nextQuestion ?? "Error: Could not extract question from AI response.",
+        questionText: questionText || "Error: Could not extract question from AI response.",
         rawAiResponseText: rawAiResponseText // Save the full structured response text
     };
 
@@ -253,140 +259,9 @@ export async function getFirstQuestion(
   }
 }
 
-/**
- * @deprecated This function is no longer used in the application.
- * Use continueConversation() instead for natural conversation flow.
- * Will be removed in a future version.
- * 
- * Continues an existing interview conversation by sending the user's response
- * and getting the AI's next turn (next question + feedback/alternative for the user's answer).
- * Uses generateContentStream but processes the full stream response before returning.
- * @param jdResumeText - The user's JD and Resume text.
- * @param persona - The persona definition.
- * @param history - The complete conversation history (Q&A pairs) *before* the current user response.
- * @param currentUserResponse - The text of the user's last response.
- * @returns A promise resolving to a structured AI response (next question, feedback, alternative)
- *          and the raw text output from the AI for saving in history.
- */
-export async function continueInterview(
-  jdResumeText: JdResumeText,
-  persona: Persona,
-  history: MvpSessionTurn[], // Array of previous turns including rawAiResponseText
-  currentUserResponse: string
-): Promise<MvpAiResponse & { rawAiResponseText: string }> {
-  console.warn('continueInterview() is deprecated. Use continueConversation() instead.');
-  try {
-    // System instruction is now part of buildPromptContents
-    const contents = buildPromptContents(jdResumeText, persona, history, currentUserResponse);
-
-    // Use the updated API call structure
-    const response = await genAI.models.generateContentStream({
-        model: MODEL_NAME_TEXT,
-        contents: contents,
-        config: {
-            temperature: 0.7,
-            maxOutputTokens: 1000,
-        },
-    });
-
-    // Process the stream to get the complete raw text response
-    const rawAiResponseText = await processStream(response);
-
-    if (!rawAiResponseText) {
-         console.error("Gemini returned empty response for continue interview.");
-          throw new Error('Gemini returned an empty response.');
-     }
-
-    // Parse the raw text response into structured data
-    const parsedResponse = parseAiResponse(rawAiResponseText);
-
-    // Return the structured response along with the raw text for saving.
-    return {
-        ...parsedResponse,
-        rawAiResponseText: rawAiResponseText // Save the full structured response text in the DB history
-    };
-
-  } catch (error) {
-    console.error('Error continuing interview with Gemini:', error);
-     // Re-throw a more user-friendly error or handle appropriately
-    throw new Error('Failed to get next question and feedback from AI.');
-  }
-}
-
 // ==============================================
 // Phase 3A: Live Interview Functions (TDD)
 // ==============================================
-
-/**
- * @deprecated This function is no longer used in the application.
- * Use getNewTopicalQuestion() for topic transitions instead.
- * Will be removed in a future version.
- * 
- * Generate the next question in a live interview based on conversation history
- */
-export async function getNextQuestion(
-  conversationHistory: MvpSessionTurn[],
-  persona: Persona
-): Promise<string | null> {
-  console.warn('getNextQuestion() is deprecated. Use getNewTopicalQuestion() instead.');
-  try {
-    const conversationContext = conversationHistory
-      .map(turn => `${turn.role === 'model' ? 'Interviewer' : 'Candidate'}: ${turn.text}`)
-      .join('\n');
-
-    const systemPrompt = `${persona.systemPrompt}
-
-INTERVIEW CONTEXT:
-Previous conversation:
-${conversationContext}
-
-INSTRUCTIONS:
-- Generate the next logical interview question based on the conversation so far
-- Build on the candidate's previous responses
-- Keep questions relevant to the job requirements
-- If the interview should end (after sufficient questions), respond with "END_INTERVIEW"
-- Make questions progressively more specific and challenging
-- Ensure smooth conversation flow
-
-Generate only the next question, nothing else.`;
-
-    const contents: Content[] = [
-      {
-        role: 'user',
-        parts: [{ text: systemPrompt }],
-      },
-    ];
-
-    const response = await genAI.models.generateContentStream({
-      model: MODEL_NAME_TEXT,
-      contents,
-      config: {
-        temperature: 0.7,
-        maxOutputTokens: 200,
-      },
-    });
-
-    let fullResponse = '';
-    for await (const chunk of response) {
-      if (chunk.text) {
-        fullResponse += chunk.text;
-      }
-    }
-
-    const nextQuestion = fullResponse.trim();
-    
-    // Check if interview should end
-    if (nextQuestion.includes('END_INTERVIEW') || conversationHistory.length >= 10) {
-      return null;
-    }
-
-    return nextQuestion;
-
-  } catch (error) {
-    console.error('Error generating next question:', error);
-    throw new Error('Failed to generate next interview question');
-  }
-}
 
 // --- Future: Multi-modal (Voice/Streaming) Functions ---
 // These would use the `client.live` interface and require a stateful backend/WebSocket architecture.
@@ -831,6 +706,13 @@ Respond with just your natural follow-up question or comment.`;
   return contents;
 }
 
+// Helper function to safely get a random item from array
+function getRandomFollowUp(followUps: string[]): string {
+  if (followUps.length === 0) return "Could you tell me more about that?";
+  const randomIndex = Math.floor(Math.random() * followUps.length);
+  return followUps[randomIndex]!; // Non-null assertion since we checked length
+}
+
 function generateBetterContextualFollowUp(
   userResponse: string,
   currentTopic?: string
@@ -845,7 +727,7 @@ function generateBetterContextualFollowUp(
       "What specific courses or experiences shaped your career interests?",
       "Which professors or projects had the biggest impact on your learning?"
     ];
-    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+    return getRandomFollowUp(followUps);
   }
 
   if (response.includes('mentor') || response.includes('junior') || response.includes('code review')) {
@@ -855,7 +737,7 @@ function generateBetterContextualFollowUp(
       "What's the most challenging mentoring situation you've handled?",
       "How do you help junior developers grow beyond just fixing their code?"
     ];
-    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+    return getRandomFollowUp(followUps);
   }
 
   if (response.includes('party') || response.includes('fun') || response.includes('social')) {
@@ -865,7 +747,7 @@ function generateBetterContextualFollowUp(
       "How do you think your social skills contribute to team collaboration?",
       "What does work-life balance mean to you?"
     ];
-    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+    return getRandomFollowUp(followUps);
   }
 
   if (response.includes('project') || response.includes('built') || response.includes('developed')) {
@@ -875,7 +757,7 @@ function generateBetterContextualFollowUp(
       "What would you change about your approach if you were starting over?",
       "What's the most valuable lesson you learned from that experience?"
     ];
-    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+    return getRandomFollowUp(followUps);
   }
 
   // Topic-specific intelligent questions
@@ -886,7 +768,7 @@ function generateBetterContextualFollowUp(
       "What's your strategy for building trust with new team members?",
       "Describe how you've contributed to improving team processes."
     ];
-    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+    return getRandomFollowUp(followUps);
   }
 
   if (currentTopic?.toLowerCase().includes('technical') || currentTopic?.toLowerCase().includes('react')) {
@@ -896,7 +778,7 @@ function generateBetterContextualFollowUp(
       "How do you balance writing clean code with meeting deadlines?",
       "Tell me about a technical decision you're particularly proud of."
     ];
-    return followUps[Math.floor(Math.random() * followUps.length)] || followUps[0];
+    return getRandomFollowUp(followUps);
   }
 
   // Smart fallbacks based on response length and content
@@ -907,7 +789,7 @@ function generateBetterContextualFollowUp(
       "I'd love to hear more specifics about what that looked like.",
       "Can you walk me through what actually happened there?"
     ];
-    return shortResponseFollowUps[Math.floor(Math.random() * shortResponseFollowUps.length)] || shortResponseFollowUps[0];
+    return getRandomFollowUp(shortResponseFollowUps);
   }
 
   // Thoughtful generic fallbacks (much better than the old ones)
@@ -918,7 +800,7 @@ function generateBetterContextualFollowUp(
     "What skills did you develop through that experience?"
   ];
   
-  return smartGenericFollowUps[Math.floor(Math.random() * smartGenericFollowUps.length)] || smartGenericFollowUps[0];
+  return getRandomFollowUp(smartGenericFollowUps);
 }
 
 function extractInsightsFromResponse(userResponse: string, currentTopic?: string): string[] {

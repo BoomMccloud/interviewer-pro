@@ -52,12 +52,11 @@ jest.mock('~/lib/personaService', () => ({
 }));
 
 // Import the mocked functions to get references to them for tests
-import { getFirstQuestion, continueInterview, continueConversation, getNewTopicalQuestion, parseAiResponse } from '~/lib/gemini';
+import { getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from '~/lib/gemini';
 import { getPersona } from '~/lib/personaService';
 
 // Cast them to jest.MockedFunction for type safety with mock methods
 const mockGetFirstQuestionFn = getFirstQuestion as jest.MockedFunction<typeof getFirstQuestion>;
-const mockContinueInterviewFn = continueInterview as jest.MockedFunction<typeof continueInterview>;
 const mockContinueConversationFn = continueConversation as jest.MockedFunction<typeof continueConversation>;
 const mockGetNewTopicalQuestionFn = getNewTopicalQuestion as jest.MockedFunction<typeof getNewTopicalQuestion>;
 const mockParseAiResponseFn = parseAiResponse as jest.MockedFunction<typeof parseAiResponse>;
@@ -109,7 +108,6 @@ describe('Session tRPC Router', () => {
   beforeEach(async () => {
     // Reset all imported mock functions
     mockGetFirstQuestionFn.mockReset();
-    mockContinueInterviewFn.mockReset();
     mockContinueConversationFn.mockReset();
     mockGetNewTopicalQuestionFn.mockReset();
     mockParseAiResponseFn.mockReset();
@@ -329,7 +327,11 @@ describe('Session tRPC Router', () => {
 
       const caller = await getTestCaller(user);
       const mockFirstQuestionText = 'Tell me about your experience with React.';
-      const mockKeyPoints = ['Focus on specific projects', 'Component design patterns', 'State management'];
+      const mockKeyPoints = [
+        "Focus on your specific role and contributions",
+        "Highlight technologies and tools you used", 
+        "Discuss challenges faced and how you overcame them"
+      ];
 
       // Setup mocks
       mockGetFirstQuestionFn.mockResolvedValue({

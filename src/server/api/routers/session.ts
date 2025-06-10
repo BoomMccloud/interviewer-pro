@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
-import { getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from "~/lib/gemini";
+import { getFirstQuestion, continueConversation, getNewTopicalQuestion } from "~/lib/gemini";
 import { getPersona } from "~/lib/personaService";
 import type { 
   MvpSessionTurn, 
@@ -57,12 +57,11 @@ async function generateQuestionForSession(
   // Generate question using AI service
   const questionResult = await getFirstQuestion(jdResumeText, persona);
   
-  // Parse the AI response to extract structured data
-  const parsedResponse = parseAiResponse(questionResult.rawAiResponseText);
-
+  // Modern approach: use AI response directly + fallback key points
+  // The legacy parseAiResponse is deprecated for natural question generation
   return {
-    question: parsedResponse.nextQuestion ?? questionResult.questionText,
-    keyPoints: parsedResponse.keyPoints ?? [
+    question: questionResult.questionText,
+    keyPoints: [
       "Focus on your specific role and contributions",
       "Highlight technologies and tools you used", 
       "Discuss challenges faced and how you overcame them"
@@ -131,19 +130,13 @@ export const sessionRouter = createTRPCRouter({
         ]
       };
 
-      // Extract key points from AI response
-      try {
-        const parsedResponse = parseAiResponse(firstQuestionResponse.rawAiResponseText);
-        firstQuestionSegment.keyPoints = parsedResponse.keyPoints;
-      } catch (error) {
-        console.error("Failed to parse AI response for key points:", error);
-        // Use fallback key points
-        firstQuestionSegment.keyPoints = [
-          "Focus on your specific role and contributions",
-          "Highlight technologies and tools you used", 
-          "Discuss challenges faced and how you overcame them"
-        ];
-      }
+      // Use fallback key points (modern approach - AI generates natural questions)
+      // The legacy parseAiResponse is deprecated, we use contextual fallbacks instead
+      firstQuestionSegment.keyPoints = [
+        "Focus on your specific role and contributions",
+        "Highlight technologies and tools you used", 
+        "Discuss challenges faced and how you overcame them"
+      ];
 
       // Create session with populated questionSegments
       const newSession = await db.sessionData.create({
@@ -275,14 +268,14 @@ export const sessionRouter = createTRPCRouter({
       const questionSegments = zodQuestionSegmentArray.parse(session.questionSegments ?? []);
       
       // Convert question segments to legacy history format for compatibility
-      const history = [];
+      const history: MvpSessionTurn[] = [];
       let turnCounter = 0;
       for (const segment of questionSegments) {
         for (const turn of segment.conversation) {
           turnCounter++;
           history.push({
             id: `${session.id}-turn-${turnCounter}`, // Ensure unique ID
-            role: turn.role === 'ai' ? 'model' : 'user',
+            role: turn.role === 'ai' ? 'model' as const : 'user' as const,
             text: turn.content,
             timestamp: new Date(turn.timestamp),
           });
@@ -453,19 +446,13 @@ export const sessionRouter = createTRPCRouter({
         ]
       };
 
-      // Extract key points from AI response
-      try {
-        const parsedResponse = parseAiResponse(questionResult.rawAiResponseText);
-        firstQuestionSegment.keyPoints = parsedResponse.keyPoints;
-      } catch (error) {
-        console.error("Failed to parse AI response for key points:", error);
-        // Use fallback key points
-        firstQuestionSegment.keyPoints = [
-          "Focus on your specific role and contributions",
-          "Highlight technologies and tools you used", 
-          "Discuss challenges faced and how you overcame them"
-        ];
-      }
+      // Use fallback key points (modern approach - AI generates natural questions)
+      // The legacy parseAiResponse is deprecated, we use contextual fallbacks instead
+      firstQuestionSegment.keyPoints = [
+        "Focus on your specific role and contributions",
+        "Highlight technologies and tools you used", 
+        "Discuss challenges faced and how you overcame them"
+      ];
       
       // Update session with question segments
       await ctx.db.sessionData.update({
