@@ -215,6 +215,52 @@ function selectPanelForJD(jdText: string): InterviewPanel {
 
 ---
 
+## Prompt Engineering Workflow
+
+To turn prompt fine-tuning from a random art into a systematic process, we will follow a disciplined, iterative cycle for every prompt change. This workflow directly supports the **Continuous Improvement** and **Data-Driven Decisions** principles.
+
+This work happens directly within the hardcoded persona objects in `src/lib/personaService.ts` as part of **Phase 1**.
+
+### **Step 1: Identify a Specific Problem**
+First, pinpoint a clear, specific issue with the LLM's output for a given persona based on observed outputs.
+
+*   **Problem Example (Format):** "The `BEHAVIORAL_INTERVIEWER_FRIENDLY` persona sometimes forgets to include the `<KEY_POINTS>` tag in its first question."
+*   **Problem Example (Quality):** "The `SWE_INTERVIEWER_STANDARD` persona's questions about 'system design' are too generic for senior candidates."
+
+### **Step 2: Isolate the Prompt and Form a Hypothesis**
+Based on the problem, locate the exact part of the prompt that needs changing and form a clear hypothesis.
+
+*   **Hypothesis for Format Problem:** "By adding the phrase 'You must always include every XML tag in your response, even if the content is empty' to the main system prompt, format compliance will increase."
+*   **Hypothesis for Quality Problem:** "If I change the `prompt_guidance` for the `technical_depth` insight to be more specific, like 'Generate a system design question involving trade-offs between scalability, latency, and cost,' the resulting questions will be less generic."
+
+### **Step 3: Implement the Change in Code**
+Make the targeted edit to the string literal for the `systemPrompt` or `prompt_guidance` within the relevant persona object in `src/lib/personaService.ts`.
+
+### **Step 4: Test and Validate**
+This is the most critical step. We must systematically test and validate every change.
+
+1.  **Use a "Golden Set":** Test against a fixed, representative Job Description and Resume to ensure a consistent baseline.
+2.  **Generate a "Before" Sample:** Using the current prompt, generate and save 5-10 question samples.
+3.  **Generate an "After" Sample:** Using the new prompt, generate and save 5-10 new samples with the same Golden Set.
+4.  **Compare and Evaluate:** Compare the "After" sample to the "Before" sample.
+    *   Did the change fix the identified problem?
+    *   Did it introduce any new, negative side effects?
+    *   Is the improvement consistent across all runs?
+
+### **Step 5: Document and Commit**
+Once validated, commit the change with a comment explaining *why* the change was made.
+
+*   **Example Comment:**
+    ```typescript
+    // In src/lib/personaService.ts
+    systemPrompt: `You are an expert...
+    // Prompt Enhancement (v1.1): Added explicit instruction to always include every XML tag
+    // to improve format consistency after observing missed tags in ~15% of responses.
+    RESPONSE FORMAT - Always use this exact structure: ...`
+    ```
+
+---
+
 ## Implementation Roadmap
 
 ### **Next 2 Weeks: Phase 1**

@@ -4,6 +4,7 @@
  * Run with: npx tsx scripts/create-dev-session.ts
  */
 
+import 'dotenv/config';
 import { db } from '../src/server/db.js';
 
 async function createDevSession() {

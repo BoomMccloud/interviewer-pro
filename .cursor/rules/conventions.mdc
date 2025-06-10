@@ -5,6 +5,7 @@ alwaysApply: true
 ---
 #Follow These Instructions
 ## Confirm with the user before generating any code
+## Follow our TDD methodology when creating new features
 ## For each file you generate, write a summary at the top of the file that describes what the file does and key functions.
 ## If lint errors persist, as the user to run `npm run lint` in terminal to see what the output is
 ## Only edit files that are related to the current task, if there is a lint error in an unrelated file, ignore it for now.
