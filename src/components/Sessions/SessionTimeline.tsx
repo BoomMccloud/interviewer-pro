@@ -183,11 +183,11 @@ export default function SessionTimeline({ history }: SessionTimelineProps) {
         <div className="space-y-1">
           {history.map((turn, index) => (
             <QuestionAnswerCard
-              key={turn.id}
+              key={turn.id || `turn-${index}`}
               turn={turn}
               responseTime={getResponseTime(index)}
-              isExpanded={expandedTurns.has(turn.id)}
-              onToggleExpand={() => toggleExpand(turn.id)}
+              isExpanded={expandedTurns.has(turn.id || `turn-${index}`)}
+              onToggleExpand={() => toggleExpand(turn.id || `turn-${index}`)}
             />
           ))}
         </div>
