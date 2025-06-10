@@ -195,11 +195,19 @@ export function parseAiResponse(rawResponse: string): MvpAiResponse {
         console.warn("AI response missing <FEEDBACK> tag, raw response:", rawResponse);
     }
 
+    // Check if we're using fallbacks and log appropriately
+    if (keyPoints.length === 0) {
+        console.warn('🚨 FALLBACK TRIGGERED: parseAiResponse using fallback key points (AI response missing KEY_POINTS)');
+    }
+    if (feedbackPoints.length === 0) {
+        console.warn('🚨 FALLBACK TRIGGERED: parseAiResponse using fallback feedback (AI response missing FEEDBACK)');
+    }
+
     return {
         nextQuestion,
-        keyPoints: keyPoints.length > 0 ? keyPoints : ["Focus on your specific role", "Highlight technologies used", "Discuss challenges overcome"],
+        keyPoints: keyPoints.length > 0 ? keyPoints : ["Focus on your specific role [FALLBACK]", "Highlight technologies used [FALLBACK]", "Discuss challenges overcome [FALLBACK]"],
         analysis,
-        feedbackPoints: feedbackPoints.length > 0 ? feedbackPoints : ["No specific feedback provided."],
+        feedbackPoints: feedbackPoints.length > 0 ? feedbackPoints : ["No specific feedback provided. [FALLBACK]"],
         suggestedAlternative: suggestedAlternative || "No suggested alternative provided."
     };
 }
@@ -253,9 +261,17 @@ export async function getFirstQuestion(
     };
 
   } catch (error) {
-    console.error('Error getting first question from Gemini:', error);
-    // Re-throw a more user-friendly error or handle appropriately
-    throw new Error('Failed to start interview simulation due to an AI error.');
+    console.error('🚨 FALLBACK TRIGGERED: getFirstQuestion failed, using fallback question', error);
+    
+    // Fallback question when AI completely fails
+    const fallbackQuestion = `Hello! I'm excited to learn about your experience. Let's start with a fundamental question: Tell me about yourself and what draws you to this role. [FALLBACK: AI generation failed]`;
+    
+    console.log('📝 Using fallback first question due to AI error');
+    
+    return {
+      questionText: fallbackQuestion,
+      rawAiResponseText: `FALLBACK_RESPONSE: AI generation failed, using fallback question. Original error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
   }
 }
 
@@ -324,8 +340,11 @@ export async function continueConversation(
         naturalResponse.toLowerCase().includes('tell me more about that') ||
         naturalResponse.toLowerCase().includes('can you elaborate')) {
       
+      console.warn('🚨 FALLBACK TRIGGERED: AI response was too generic/short, using smart fallback');
+      console.log(`📝 Original AI response: "${naturalResponse}"`);
+      
       // Generate a better contextual follow-up only as last resort
-      finalResponse = generateBetterContextualFollowUp(userResponse, currentTopic);
+      finalResponse = generateBetterContextualFollowUp(userResponse, currentTopic) + ' [FALLBACK: AI response was generic]';
     }
 
     // Extract insights from user response for feedback
@@ -339,8 +358,19 @@ export async function continueConversation(
     };
 
   } catch (error) {
-    console.error('Error in continueConversation:', error);
-    throw new Error('Failed to continue conversation');
+    console.error('🚨 FALLBACK TRIGGERED: continueConversation failed completely, using emergency fallback', error);
+    
+    // Emergency fallback when everything fails
+    const emergencyResponse = generateBetterContextualFollowUp(userResponse, currentTopic) + ' [FALLBACK: AI conversation failed]';
+    
+    console.log('📝 Using emergency conversation fallback');
+    
+    return {
+      analysis: `[FALLBACK] Unable to analyze response due to AI error, but continuing conversation.`,
+      feedbackPoints: ['AI analysis temporarily unavailable', 'Your response was received', 'Let\'s continue the conversation'],
+      followUpQuestion: emergencyResponse,
+      rawAiResponseText: `FALLBACK_RESPONSE: Conversation AI failed. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
   }
 }
 
@@ -381,16 +411,19 @@ export async function getNewTopicalQuestion(
 
     // Validate question quality and topic uniqueness
     if (!parsed.questionText || parsed.questionText.length < 15) {
-      console.warn('AI returned insufficient question text, using fallback');
-      parsed.questionText = generateFallbackQuestion(jdResumeText, coveredTopics);
+      console.warn('🚨 FALLBACK TRIGGERED: AI question text insufficient, using smart fallback');
+      console.log(`📝 Original AI question: "${parsed.questionText}"`);
+      parsed.questionText = generateFallbackQuestion(jdResumeText, coveredTopics) + ' [FALLBACK: AI question insufficient]';
     }
 
     if (parsed.keyPoints.length < 3) {
-      console.warn('AI returned insufficient key points, adding fallbacks');
+      console.warn('🚨 FALLBACK TRIGGERED: AI key points insufficient, supplementing with fallbacks');
+      console.log(`📝 Original key points count: ${parsed.keyPoints.length}`);
       parsed.keyPoints = [
         ...parsed.keyPoints,
         ...getFallbackKeyPoints(parsed.questionText).slice(0, 4 - parsed.keyPoints.length)
       ];
+      console.log('📝 Enhanced key points with fallbacks');
     }
 
     return {
@@ -400,8 +433,19 @@ export async function getNewTopicalQuestion(
     };
 
   } catch (error) {
-    console.error('Error in getNewTopicalQuestion:', error);
-    throw new Error('Failed to generate new topical question');
+    console.error('🚨 FALLBACK TRIGGERED: getNewTopicalQuestion failed completely, using emergency fallback', error);
+    
+    // Emergency fallback question when AI completely fails
+    const emergencyQuestion = generateFallbackQuestion(jdResumeText, coveredTopics) + ' [FALLBACK: AI topic generation failed]';
+    const emergencyKeyPoints = getFallbackKeyPoints(emergencyQuestion);
+    
+    console.log('📝 Using emergency topical question fallback');
+    
+    return {
+      questionText: emergencyQuestion,
+      keyPoints: emergencyKeyPoints,
+      rawAiResponseText: `FALLBACK_RESPONSE: Topic generation AI failed. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
   }
 }
 
@@ -491,6 +535,9 @@ function parseTopicalResponse(rawResponse: string): {
 // Enhanced fallback functions
 
 function generateFallbackQuestion(jdResumeText: JdResumeText, coveredTopics?: string[]): string {
+  console.log('🔄 FALLBACK FUNCTION: generateFallbackQuestion called');
+  console.log(`📝 Covered topics: ${coveredTopics?.join(', ') ?? 'none'}`);
+  
   // Extract key requirements from JD that haven't been covered
   const jdLower = jdResumeText.jdText.toLowerCase();
   const covered = (coveredTopics ?? []).map(t => t.toLowerCase());
@@ -510,17 +557,23 @@ function generateFallbackQuestion(jdResumeText: JdResumeText, coveredTopics?: st
     );
     
     if (hasKeyword && !alreadyCovered) {
+      console.log(`📝 Selected fallback question for keywords: ${fallback.keywords.join(', ')}`);
       return fallback.question;
     }
   }
 
+  console.log('📝 Using generic fallback question (no matching keywords)');
   return 'Tell me about a challenging project you worked on and how you approached solving the key problems.';
 }
 
 function getFallbackKeyPoints(questionText: string): string[] {
+  console.log('🔄 FALLBACK FUNCTION: getFallbackKeyPoints called');
+  console.log(`📝 Question text: "${questionText.substring(0, 50)}..."`);
+  
   const questionLower = questionText.toLowerCase();
   
   if (questionLower.includes('backend') || questionLower.includes('node')) {
+    console.log('📝 Using backend-specific key points');
     return [
       'Describe specific backend technologies used',
       'Explain API design and architecture decisions',
@@ -530,6 +583,7 @@ function getFallbackKeyPoints(questionText: string): string[] {
   }
   
   if (questionLower.includes('team') || questionLower.includes('leadership')) {
+    console.log('📝 Using team/leadership-specific key points');
     return [
       'Describe your role and responsibilities',
       'Explain how you handle team collaboration',
@@ -539,6 +593,7 @@ function getFallbackKeyPoints(questionText: string): string[] {
   }
   
   if (questionLower.includes('system') || questionLower.includes('design')) {
+    console.log('📝 Using system design-specific key points');
     return [
       'Explain your design process and methodology',
       'Discuss trade-offs and decision criteria',
@@ -547,6 +602,7 @@ function getFallbackKeyPoints(questionText: string): string[] {
     ];
   }
   
+  console.log('📝 Using generic fallback key points');
   return [
     'Focus on specific examples and outcomes',
     'Highlight your role and contributions',
@@ -621,10 +677,15 @@ function generateBetterContextualFollowUp(
   userResponse: string,
   currentTopic?: string
 ): string {
+  console.log('🔄 FALLBACK FUNCTION: generateBetterContextualFollowUp called');
+  console.log(`📝 User response: "${userResponse.substring(0, 50)}..."`);
+  console.log(`📝 Current topic: ${currentTopic ?? 'none'}`);
+  
   const response = userResponse.toLowerCase();
   
   // Analyze user response for specific concepts to ask about
   if (response.includes('graduated') || response.includes('degree') || response.includes('university')) {
+    console.log('📝 Detected education/graduation context, using academic follow-ups');
     const followUps = [
       "What skills from your studies are you most excited to apply in a professional setting?",
       "How did your academic projects prepare you for real-world challenges?",
@@ -635,6 +696,7 @@ function generateBetterContextualFollowUp(
   }
 
   if (response.includes('mentor') || response.includes('junior') || response.includes('code review')) {
+    console.log('📝 Detected mentoring/leadership context, using mentoring follow-ups');
     const followUps = [
       "What's your approach when a junior developer disagrees with your feedback?",
       "How do you balance being supportive with maintaining code quality standards?",
@@ -645,6 +707,7 @@ function generateBetterContextualFollowUp(
   }
 
   if (response.includes('party') || response.includes('fun') || response.includes('social')) {
+    console.log('📝 Detected social/culture context, using work-life balance follow-ups');
     const followUps = [
       "How do you balance having fun with getting things done when working on projects?",
       "What role does team culture and social interaction play in your ideal workplace?",
@@ -655,6 +718,7 @@ function generateBetterContextualFollowUp(
   }
 
   if (response.includes('project') || response.includes('built') || response.includes('developed')) {
+    console.log('📝 Detected project/development context, using project follow-ups');
     const followUps = [
       "What was the most unexpected challenge you encountered in that project?",
       "How did you decide on the technical approach you used?",
@@ -666,6 +730,7 @@ function generateBetterContextualFollowUp(
 
   // Topic-specific intelligent questions
   if (currentTopic?.toLowerCase().includes('team')) {
+    console.log('📝 Using team-specific topic follow-ups');
     const followUps = [
       "Tell me about a time when you had to convince teammates to try a different approach.",
       "How do you handle situations where team members have conflicting ideas?",
@@ -676,6 +741,7 @@ function generateBetterContextualFollowUp(
   }
 
   if (currentTopic?.toLowerCase().includes('technical') || currentTopic?.toLowerCase().includes('react')) {
+    console.log('📝 Using technical-specific topic follow-ups');
     const followUps = [
       "Walk me through how you approach debugging a complex technical issue.",
       "What's your process for staying current with new technologies?",
@@ -687,6 +753,7 @@ function generateBetterContextualFollowUp(
 
   // Smart fallbacks based on response length and content
   if (response.length < 20) {
+    console.log('📝 Using short response follow-ups (response too brief)');
     const shortResponseFollowUps = [
       "Could you paint me a clearer picture of that situation?",
       "What context would help me understand that better?",
@@ -697,6 +764,7 @@ function generateBetterContextualFollowUp(
   }
 
   // Thoughtful generic fallbacks (much better than the old ones)
+  console.log('📝 Using smart generic fallbacks (no specific context detected)');
   const smartGenericFollowUps = [
     "What made that experience particularly meaningful to you?",
     "How has that shaped your professional perspective?",
