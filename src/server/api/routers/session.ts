@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
-import { continueInterview, getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from "~/lib/gemini";
+import { getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from "~/lib/gemini";
 import { getPersona } from "~/lib/personaService";
 import type { 
   MvpSessionTurn, 

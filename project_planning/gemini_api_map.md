@@ -32,13 +32,32 @@ const MODEL_NAME_TEXT = 'gemini-2.0-flash-001';
 const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY || 'test-key-for-mocking' });
 ```
 
-### **🎯 Core AI Functions (3 Main Functions)**
+### **🎯 Core AI Functions (3 Active Functions)**
 
-| Function | Purpose | Input | Output | Usage Context |
-|----------|---------|-------|--------|---------------|
-| `getFirstQuestion()` | Starts new interviews | JD, Resume, Persona | `{questionText, rawAiResponseText}` | Session initialization |
-| `continueConversation()` | Conversational follow-ups within same topic | JD, Resume, Persona, History, UserResponse | `{analysis, feedbackPoints, followUpQuestion, rawAiResponseText}` | User message responses |
-| `getNewTopicalQuestion()` | User-controlled topic transitions | JD, Resume, Persona, History, CoveredTopics | `{questionText, keyPoints, rawAiResponseText}` | "Next Question" button |
+#### **✅ ACTIVELY USED FUNCTIONS**
+
+| Function | Temperature | Tokens | Purpose | Used By (tRPC) | Status |
+|----------|-------------|--------|---------|----------------|--------|
+| `getFirstQuestion()` | 0.7 | 1000 | Starts new interviews | `startInterviewSession` | ✅ **ACTIVE** |
+| `continueConversation()` | 0.8 | 400 | Conversational follow-ups within same topic | `submitResponse` | ✅ **ACTIVE** |
+| `getNewTopicalQuestion()` | 0.8 | 800 | User-controlled topic transitions | `getNextTopicalQuestion` | ✅ **ACTIVE** |
+
+#### **🔴 DEPRECATED/LEGACY FUNCTIONS**
+
+| Function | Temperature | Tokens | Status | Issue | Action Needed |
+|----------|-------------|--------|--------|-------|---------------|
+| `continueInterview()` | 0.7 | 1000 | 🔴 **DEPRECATED** | Imported but never called | Remove import from session.ts |
+| `getNextQuestion()` | 0.7 | 200 | 🔴 **LEGACY** | Exists but unused anywhere | Consider removing from gemini.ts |
+
+#### **📍 Function Usage Locations**
+
+**ACTIVE USAGE:**
+- `getFirstQuestion()`: Called in `src/server/api/routers/session.ts:435`
+- `continueConversation()`: Called in `src/server/api/routers/session.ts:647`
+- `getNewTopicalQuestion()`: Called in `src/server/api/routers/session.ts:744`
+
+**DEPRECATED IMPORTS:**
+- `continueInterview`: Imported in `src/server/api/routers/session.ts:6` but **never called**
 
 ### **📡 API Call Pattern**
 ```typescript
@@ -268,14 +287,18 @@ Frontend: Update "Current Question" section with new topic
 
 Your system has **sophisticated context management** that ensures the LLM always understands the conversation flow and user responses. Here's exactly how it works:
 
-#### **🔄 Context Flow by Function**
+#### **🔄 Context Flow by Function (Active Functions Only)**
 
-| Function | Context Method | User Response Handling | History Depth | Memory Strategy |
-|----------|----------------|------------------------|---------------|----------------|
-| `getFirstQuestion()` | System setup only | **None** (initial question) | Empty `[]` | Fresh start |
-| `continueInterview()` | **Structured history** | Added as final message | **Full history** | Complete memory |
-| `continueConversation()` | **Natural prompt** | Explicit "Candidate just said: ..." | **Recent (6 turns)** | Focused memory |
-| `getNewTopicalQuestion()` | **Topic-focused** | Implicit in history | **Full history** | Topic-aware memory |
+| Function | Context Method | User Response Handling | History Depth | Memory Strategy | Status |
+|----------|----------------|------------------------|---------------|----------------|--------|
+| `getFirstQuestion()` | System setup only | **None** (initial question) | Empty `[]` | Fresh start | ✅ **ACTIVE** |
+| `continueConversation()` | **Natural prompt** | Explicit "Candidate just said: ..." | **Recent (6 turns)** | Focused memory | ✅ **ACTIVE** |
+| `getNewTopicalQuestion()` | **Topic-focused** | Implicit in history | **Full history** | Topic-aware memory | ✅ **ACTIVE** |
+
+#### **🔴 Deprecated Context Patterns (Legacy)**
+| Function | Context Method | Status | Issue |
+|----------|----------------|--------|-------|
+| `continueInterview()` | Structured history + full memory | 🔴 **DEPRECATED** | Unused - replaced by `continueConversation()` |
 
 #### **🏗️ Core Context Builder (`buildPromptContents`)**
 
@@ -472,12 +495,14 @@ LLM Response: "How did you approach managing state? Did you use Redux or Context
 4. **💡 Smart Truncation**: Natural conversation uses recent history to prevent context overflow
 5. **🎯 Explicit User Input**: Current user response is clearly identified in the context
 
-#### **🧠 Memory Management Strategies:**
+#### **🧠 Memory Management Strategies (Active Functions):**
 
-- **Full Memory** (`continueInterview`): Complete conversation history for structured interviews
-- **Focused Memory** (`continueConversation`): Recent 6 turns for natural flow
-- **Topic Memory** (`getNewTopicalQuestion`): Full history with topic awareness
-- **Fresh Memory** (`getFirstQuestion`): Clean slate for new interviews
+- **Fresh Memory** (`getFirstQuestion`): Clean slate for new interviews ✅
+- **Focused Memory** (`continueConversation`): Recent 6 turns for natural flow ✅
+- **Topic Memory** (`getNewTopicalQuestion`): Full history with topic awareness ✅
+
+#### **🔴 Deprecated Memory Patterns:**
+- **Full Memory** (`continueInterview`): 🔴 **DEPRECATED** - Complete conversation history (unused)
 
 #### **🔄 Context Switching Benefits:**
 
@@ -486,14 +511,18 @@ LLM Response: "How did you approach managing state? Did you use Redux or Context
 - **Topic Transitions**: Complete history for coherent topic changes
 - **Performance**: Optimized context size for each use case
 
-### **📊 Context Size Optimization**
+### **📊 Context Size Optimization (Active Functions)**
 
-| Function | Typical Context Size | Optimization Strategy |
-|----------|---------------------|----------------------|
-| `getFirstQuestion()` | ~500 tokens | JD + Resume + Instructions only |
-| `continueInterview()` | ~1500-3000 tokens | Full history + structured format |
-| `continueConversation()` | ~800-1200 tokens | Recent history + natural prompt |
-| `getNewTopicalQuestion()` | ~1200-2000 tokens | Full history + topic guidance |
+| Function | Typical Context Size | Optimization Strategy | Status |
+|----------|---------------------|----------------------|--------|
+| `getFirstQuestion()` | ~500 tokens | JD + Resume + Instructions only | ✅ **ACTIVE** |
+| `continueConversation()` | ~800-1200 tokens | Recent history + natural prompt | ✅ **ACTIVE** |
+| `getNewTopicalQuestion()` | ~1200-2000 tokens | Full history + topic guidance | ✅ **ACTIVE** |
+
+#### **🔴 Deprecated Context Sizes (Legacy)**
+| Function | Typical Context Size | Issue | Status |
+|----------|---------------------|-------|--------|
+| `continueInterview()` | ~1500-3000 tokens | Unused - largest context size | 🔴 **DEPRECATED** |
 
 ---
 
@@ -680,18 +709,24 @@ const configs = {
 5. **📊 Rich Data Structures**: QuestionSegments provide excellent analytics foundation
 6. **🔄 Smart Caching**: tRPC handles efficient data fetching and state management
 
-### **💡 Key Innovation: Separated AI Functions**
+### **💡 Key Innovation: Clean 3-Function Architecture**
 
-Your architecture successfully separates:
-- **Conversational AI** (`continueConversation`) - Stays within topic
-- **Topical AI** (`getNewTopicalQuestion`) - Creates new topics
+Your architecture successfully separates into **3 active functions**:
+- **Initialization** (`getFirstQuestion`) - Starts interviews ✅
+- **Conversational AI** (`continueConversation`) - Stays within topic ✅  
+- **Topical AI** (`getNewTopicalQuestion`) - Creates new topics ✅
 - **Session Management** - Database operations without AI calls
 
-This creates a **user-controlled interview experience** where:
-- Users know exactly what each button does
+#### **🧹 Legacy Functions Identified:**
+- **🔴 `continueInterview()`** - Deprecated (unused import)
+- **🔴 `getNextQuestion()`** - Legacy (never called)
+
+This creates a **clean user-controlled interview experience** where:
+- **3 clear functions** instead of confusing 5 functions
+- Users know exactly what each button does  
 - AI responses are contextually appropriate
 - Topic transitions are clean and deliberate
-- Session state is reliably maintained
+- **Optimized token usage** (removed largest context function)
 
 ---
 
@@ -734,6 +769,34 @@ This creates a **user-controlled interview experience** where:
 - **Performance**: Monitor API call duration, error rates  
 - **User Experience**: Measure conversation flow, completion rates
 - **Cost Management**: Track Gemini API usage and optimization opportunities
+
+### **🧹 Cleanup Recommendations**
+
+#### **🔴 Immediate Actions Required**
+
+1. **Remove Deprecated Import**:
+   ```typescript
+   // In src/server/api/routers/session.ts:6
+   // CURRENT (with unused import):
+   import { continueInterview, getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from "~/lib/gemini";
+   
+   // SHOULD BE (clean):
+   import { getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from "~/lib/gemini";
+   ```
+
+2. **Consider Removing Legacy Functions**:
+   ```typescript
+   // In src/lib/gemini.ts - consider removing or deprecating:
+   // - continueInterview() (line 267) - never called
+   // - getNextQuestion() (line 318) - never called
+   ```
+
+#### **📈 Benefits of Cleanup**
+
+- **Reduced Bundle Size**: Remove ~200+ lines of unused code
+- **Clear Architecture**: 3-function system instead of confusing 5-function system  
+- **Improved Maintenance**: Fewer functions to test and maintain
+- **Cost Optimization**: Remove largest context size function (`continueInterview` ~3000 tokens)
 
 ---
 

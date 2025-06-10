@@ -254,6 +254,10 @@ export async function getFirstQuestion(
 }
 
 /**
+ * @deprecated This function is no longer used in the application.
+ * Use continueConversation() instead for natural conversation flow.
+ * Will be removed in a future version.
+ * 
  * Continues an existing interview conversation by sending the user's response
  * and getting the AI's next turn (next question + feedback/alternative for the user's answer).
  * Uses generateContentStream but processes the full stream response before returning.
@@ -270,6 +274,7 @@ export async function continueInterview(
   history: MvpSessionTurn[], // Array of previous turns including rawAiResponseText
   currentUserResponse: string
 ): Promise<MvpAiResponse & { rawAiResponseText: string }> {
+  console.warn('continueInterview() is deprecated. Use continueConversation() instead.');
   try {
     // System instruction is now part of buildPromptContents
     const contents = buildPromptContents(jdResumeText, persona, history, currentUserResponse);
@@ -313,12 +318,17 @@ export async function continueInterview(
 // ==============================================
 
 /**
+ * @deprecated This function is no longer used in the application.
+ * Use getNewTopicalQuestion() for topic transitions instead.
+ * Will be removed in a future version.
+ * 
  * Generate the next question in a live interview based on conversation history
  */
 export async function getNextQuestion(
   conversationHistory: MvpSessionTurn[],
   persona: Persona
 ): Promise<string | null> {
+  console.warn('getNextQuestion() is deprecated. Use getNewTopicalQuestion() instead.');
   try {
     const conversationContext = conversationHistory
       .map(turn => `${turn.role === 'model' ? 'Interviewer' : 'Candidate'}: ${turn.text}`)
