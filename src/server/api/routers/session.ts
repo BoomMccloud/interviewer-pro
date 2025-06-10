@@ -15,7 +15,6 @@ import type {
   ConversationTurn
 } from "~/types";
 import { 
-  zodMvpSessionTurnArray, 
   zodPersonaId, 
   PERSONA_IDS,
   zodQuestionSegmentArray,
@@ -319,8 +318,7 @@ export const sessionRouter = createTRPCRouter({
       const totalResponses = questionSegments.reduce((acc, q) => 
         acc + q.conversation.filter(turn => turn.role === 'user').length, 0);
       
-      // Calculate average response time (mock for now)
-      const avgResponseTime = totalResponses > 0 ? 45 : 0; // seconds
+      // Calculate average response time (mock for now) - using inline value
       
       return {
         sessionId: session.id,

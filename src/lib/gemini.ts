@@ -407,57 +407,7 @@ export async function getNewTopicalQuestion(
 
 // Enhanced helper functions
 
-function buildConversationalPrompt(
-  jdResumeText: JdResumeText,
-  persona: Persona,
-  history: MvpSessionTurn[],
-  userResponse: string
-): Content[] {
-  const contents: Content[] = [];
-  const systemInstructionText = buildConversationalSystemInstruction(persona);
-
-  contents.push({
-    role: 'user',
-    parts: [
-      { text: systemInstructionText },
-      { text: `\n\nJob Description:\n<JD>\n${jdResumeText.jdText}\n</JD>` },
-      { text: `\n\nCandidate Resume:\n<RESUME>\n${jdResumeText.resumeText}\n</RESUME>` },
-      {
-        text: `\n\nIMPORTANT - Conversational Response Format:
-You MUST respond in the following format for conversational follow-ups:
-
-<ANALYSIS>Your detailed analysis of the candidate's response.</ANALYSIS>
-<FEEDBACK>
-- Specific feedback point about their answer
-- Another area for improvement or strength  
-- Third constructive point
-</FEEDBACK>
-<FOLLOW_UP>Your follow-up question about the SAME topic - dig deeper, don't change topics.</FOLLOW_UP>
-
-Do NOT include <QUESTION> or <KEY_POINTS> sections - those are for new topics only.
-Focus on analyzing their response and asking follow-up questions about the current topic.
-Do NOT transition to new interview topics.`
-      },
-    ],
-  });
-
-  // Add conversation history
-  for (const turn of history) {
-    const role = turn.role === 'user' ? 'user' : 'model';
-    let parts: Part[] = [{ text: turn.text }];
-
-    if (turn.role === 'model' && turn.rawAiResponseText) {
-      parts = [{ text: turn.rawAiResponseText }];
-    }
-
-    contents.push({ role, parts });
-  }
-
-  // Add current user response
-  contents.push({ role: 'user', parts: [{ text: userResponse }] });
-
-  return contents;
-}
+// Function removed - was unused legacy code
 
 function buildTopicalPrompt(
   jdResumeText: JdResumeText,
@@ -466,7 +416,17 @@ function buildTopicalPrompt(
   coveredTopics?: string[]
 ): Content[] {
   const contents: Content[] = [];
-  const systemInstructionText = buildTopicalSystemInstruction(persona);
+  const systemInstructionText = `You are generating new topical interview questions. ${persona.systemPrompt}
+
+CRITICAL INSTRUCTIONS:
+- Generate questions about NEW topics not yet covered
+- Focus on job description requirements and resume experience
+- Avoid repeating previously discussed topics
+- Create distinct, focused questions for each topic area
+- Provide helpful key points to guide the candidate
+- Ensure questions are substantive and interview-appropriate
+
+Your goal is to select the next most important topic to explore based on the job requirements.`;
 
   const coveredTopicsText = coveredTopics && coveredTopics.length > 0 
     ? `\n\nTopics already covered: ${coveredTopics.join(', ')}`
@@ -500,65 +460,9 @@ Do NOT repeat previously covered topics.`
   return contents;
 }
 
-function buildConversationalSystemInstruction(persona: Persona): string {
-  return `You are conducting a conversational interview within the current topic. ${persona.systemPrompt}
+// Functions removed - were unused legacy code
 
-CRITICAL INSTRUCTIONS:
-- Stay focused on the current topic being discussed
-- Do NOT introduce new interview topics or areas
-- Provide thorough analysis of the candidate's response
-- Ask follow-up questions that dig deeper into the same subject
-- Give constructive, specific feedback
-- Help the candidate demonstrate their experience fully
-
-Your goal is to have a natural conversation that explores the current topic in depth, not to move to new areas.`;
-}
-
-function buildTopicalSystemInstruction(persona: Persona): string {
-  return `You are generating new topical interview questions. ${persona.systemPrompt}
-
-CRITICAL INSTRUCTIONS:
-- Generate questions about NEW topics not yet covered
-- Focus on job description requirements and resume experience
-- Avoid repeating previously discussed topics
-- Create distinct, focused questions for each topic area
-- Provide helpful key points to guide the candidate
-- Ensure questions are substantive and interview-appropriate
-
-Your goal is to select the next most important topic to explore based on the job requirements.`;
-}
-
-function parseConversationalResponse(rawResponse: string): {
-  analysis: string;
-  feedbackPoints: string[];
-  followUpQuestion: string;
-} {
-  const cleanedResponse = rawResponse ? rawResponse.trim() : "";
-
-  const analysisMatch = /<ANALYSIS>(.*?)<\/ANALYSIS>/s.exec(cleanedResponse);
-  const feedbackMatch = /<FEEDBACK>(.*?)<\/FEEDBACK>/s.exec(cleanedResponse);
-  const followUpMatch = /<FOLLOW_UP>(.*?)<\/FOLLOW_UP>/s.exec(cleanedResponse);
-
-  const analysis = analysisMatch?.[1]?.trim() ?? "Good response - shows relevant experience and understanding.";
-  const feedbackRaw = feedbackMatch?.[1]?.trim() ?? "";
-  const followUpQuestion = followUpMatch?.[1]?.trim() ?? "Can you tell me more about that experience?";
-
-  // Enhanced feedback parsing
-  const feedbackPoints = feedbackRaw
-    .split('\n')
-    .map(point => point.replace(/^[-•*]\s*/, '').trim()) // Handle different bullet styles
-    .filter(point => point.length > 3); // Filter out very short points
-
-  return {
-    analysis,
-    feedbackPoints: feedbackPoints.length > 0 ? feedbackPoints : [
-      "Shows good understanding of the topic",
-      "Demonstrates relevant experience", 
-      "Could benefit from more specific details"
-    ],
-    followUpQuestion,
-  };
-}
+// Function removed - was unused legacy code
 
 function parseTopicalResponse(rawResponse: string): {
   questionText: string;
