@@ -1,3 +1,9 @@
+/**
+ * Development script to create a test session with mock data
+ * Creates a dev user, JdResumeText, and SessionData for testing
+ * Run with: npx tsx scripts/create-dev-session.ts
+ */
+
 import { db } from '../src/server/db.js';
 
 async function createDevSession() {
