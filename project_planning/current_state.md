@@ -61,7 +61,17 @@ Successfully migrated all test suites to the QuestionSegments architecture with 
 
 ---
 
-## **🎯 CURRENT STATUS: Phase 3C Ready for Development**
+## **🎯 CURRENT STATUS: Migration Completion - Final Phase**
+
+### **🔧 Migration Completion Required - IN PROGRESS**
+
+**Critical Discovery**: During review, we identified that the `getNextQuestion` procedure deprecation was incomplete, causing test failures and technical debt. **Decision made: Complete the migration (Option 1)** for clean architecture.
+
+**Remaining Migration Tasks:**
+- ✅ **Remove Deprecated Procedures**: Clean up `getNextQuestion`, `updateSessionState`, `resetSession` from router **COMPLETED**
+- 🔄 **Update Legacy Tests**: Migrate `session-live.test.ts` to use new QuestionSegments procedures
+- 🔄 **Implement Missing Features**: Add automatic ending logic to new system
+- 🔄 **Validation**: Ensure all frontend components use new procedures exclusively
 
 ### **✅ Database Schema Alignment - COMPLETED**
 
@@ -69,19 +79,19 @@ The critical database schema mismatch has been **fully resolved**:
 
 **Migration Results:**
 - ✅ **Frontend Component**: TextInterviewUI migrated to QuestionSegments structure
-- ✅ **Backend Procedures**: 8 legacy procedures safely deprecated
+- ✅ **Backend Procedures**: 8 legacy procedures safely deprecated (cleanup needed)
 - ✅ **Working Procedures**: 5 QuestionSegments procedures fully functional
 - ✅ **Type System**: Complete migration from legacy types to new structure
-- ✅ **Test Coverage**: All tests updated and passing (19/19)
+- ✅ **Test Coverage**: Most tests updated and passing (final cleanup needed)
 
-### **✅ Test Suite Migration - COMPLETED**
+### **🔧 Test Suite Migration - FINAL CLEANUP NEEDED**
 
 **Test Migration Statistics:**
 - ✅ **Session Router Tests**: 8/9 passing (89% success) - QuestionSegments migration complete
 - ✅ **Session QuestionSegments Tests**: 5/5 passing (100% success) - TDD validation complete
 - ✅ **JdResume Router Tests**: 6/6 passing (100% success) - No migration needed
-- 🔧 **Legacy Test Files**: 3 files need minor updates (session-live, full-flow, integration)
-- **Overall Success Rate**: **86% test migration complete (19/22 core tests)**
+- 🔄 **Legacy Test Files**: 3 files need migration to new procedures (session-live, full-flow, integration)
+- **Overall Success Rate**: **86% test migration complete (19/22 core tests)** - Final 14% in progress
 
 **Integration Testing Foundation:**
 - ✅ **Strategy Document**: Comprehensive 5-phase integration testing strategy created
@@ -123,37 +133,45 @@ interface ConversationTurn {
 4. `getActiveSession` - Get current session state
 5. `saveSession` - Save session progress
 
-**🔴 DEPRECATED PROCEDURES:**
+**🔄 DEPRECATED PROCEDURES (Cleanup In Progress):**
 1. `createSession` - Updated to use QuestionSegments
 2. `submitAnswerToSession` - Replaced by `submitResponse`
 3. `getSessionReport` - Needs QuestionSegments rewrite
 4. `getSessionAnalytics` - Needs QuestionSegments rewrite  
 5. `getSessionFeedback` - Needs QuestionSegments rewrite
-6. `getNextQuestion` - Replaced by separated procedures
-7. `updateSessionState` - Needs QuestionSegments rewrite
-8. `resetSession` - Needs QuestionSegments rewrite
+6. ✅ `getNextQuestion` - **REMOVED** - Replaced by separated procedures
+7. ✅ `updateSessionState` - **REMOVED** - Needs QuestionSegments rewrite
+8. ✅ `resetSession` - **REMOVED** - Needs QuestionSegments rewrite
 
 ---
 
-## **🚀 READY FOR: Phase 3C MVP UX Refinement**
+## **🔧 CURRENT FOCUS: Complete Migration Before Phase 3C**
 
-**Status: 🟢 READY TO DEVELOP - All Foundations Complete**
+**Status: 🔄 MIGRATION COMPLETION - Critical Final Steps**
 
-With both database schema alignment and test suite migration complete, Phase 3C development can proceed with full confidence:
+**Migration Decision**: Complete the QuestionSegments migration fully before proceeding to Phase 3C UX refinement. This ensures clean architecture without technical debt.
 
-### **Immediate Development Priorities**
-1. **🎯 User-Controlled Topic Transitions**: Perfect fit for QuestionSegments architecture
-2. **🔄 Voice Interview UI**: Complete remaining test implementations
-3. **🔄 Avatar Interview UI**: Build avatar-based interview experience  
-4. **🔄 Multi-Modal Routing**: Unified interface supporting all interview modes
+### **Migration Completion Tasks (Priority Order)**
+1. ✅ **Remove Deprecated Procedures**: Clean router implementation **COMPLETED**
+   - ✅ Remove `getNextQuestion` procedure implementation
+   - ✅ Remove `updateSessionState` procedure implementation  
+   - ✅ Remove `resetSession` procedure implementation
+2. **🔄 Update Legacy Tests**: Migrate to QuestionSegments procedures **NEXT**
+   - Update `session-live.test.ts` to use `submitResponse` + `getNextTopicalQuestion`
+   - Update integration tests to use new procedure patterns
+   - Remove tests for deprecated procedures
+3. **🔄 Add Missing Features**: Complete feature parity
+   - Implement automatic ending logic (conversation length + AI decision)
+   - Add time-based interview limits using `durationInSeconds`
+   - Ensure all frontend components use new procedures
 
-### **Phase 3C Goals (Ready for Development)**
+### **Post-Migration: Phase 3C Goals (Blocked Until Migration Complete)**
 - ✅ **Session Control Polish**: Save functionality with proper terminology (DONE)
 - ✅ **UX Improvements**: Clear button states, loading feedback, and confirmation dialogs (DONE)
 - ✅ **Input Validation**: Server-side protection against empty responses (DONE)
-- 🎯 **User-Controlled Topics**: Implement "Next Question" button (READY - perfect QuestionSegments fit!)
-- 🔄 **Multi-Modal Support**: Voice and Avatar interview modes (READY)
-- 🔄 **Enhanced Analytics**: Leverage QuestionSegments for better insights (READY)
+- 🔄 **User-Controlled Topics**: Implement "Next Question" button (READY after migration)
+- 🔄 **Multi-Modal Support**: Voice and Avatar interview modes (READY after migration)
+- 🔄 **Enhanced Analytics**: Leverage QuestionSegments for better insights (READY after migration)
 
 ### **Implementation Benefits of QuestionSegments**
 - 🎯 **Perfect for User-Controlled Transitions**: Each question is its own segment
@@ -167,25 +185,33 @@ With both database schema alignment and test suite migration complete, Phase 3C 
 
 ## **📋 Current Development Readiness**
 
-**Immediate Focus: Start Phase 3C UX Development**
-1. **🟢 User-Controlled Topics**: Architecture and backend procedures ready
-2. **🟢 Voice Interview UI**: Foundation complete, ready for implementation
-3. **🟢 Avatar Interview Mode**: Ready to build on existing TextInterviewUI patterns
-4. **🟢 Multi-Modal Routing**: Unified interface infrastructure ready
+**Immediate Focus: Complete Migration Before Phase 3C**
+1. ✅ **Clean Deprecated Code**: Remove legacy procedures from router **COMPLETED**
+2. **🔄 Update Test Suite**: Migrate remaining test files to new procedures **CURRENT**  
+3. **🔄 Add Missing Features**: Implement automatic ending logic
+4. **🔄 Validation**: Verify all components use new procedures exclusively
 
 **Technical Foundation Status:**
 - ✅ **Database Architecture**: Superior QuestionSegments structure operational
 - ✅ **Backend Procedures**: 5 working procedures with comprehensive test coverage
 - ✅ **Frontend Components**: TextInterviewUI working and tested
 - ✅ **Type Safety**: End-to-end TypeScript validation
-- ✅ **Test Infrastructure**: 86% migrated with integration testing strategy
+- 🔄 **Test Infrastructure**: 86% migrated, final 14% in progress
+- ✅ **Code Cleanup**: Deprecated procedures removed from router
+
+**Post-Migration Readiness:**
+1. **🟡 User-Controlled Topics**: Ready after migration complete
+2. **🟡 Voice Interview UI**: Ready after migration complete  
+3. **🟡 Avatar Interview Mode**: Ready after migration complete
+4. **🟡 Multi-Modal Routing**: Ready after migration complete
 
 **Future Phases:**
-1. **Phase 4**: Advanced analytics leveraging QuestionSegments structure
-2. **Production**: Performance optimization and deployment readiness
+1. **Phase 3C**: UX refinement and multi-modal support (blocked until migration complete)
+2. **Phase 4**: Advanced analytics leveraging QuestionSegments structure
+3. **Production**: Performance optimization and deployment readiness
 
 ---
 
-**Status: 🚀 Phase 3C Development Ready - All critical foundations completed. Database schema alignment and test suite migration successful. Ready for immediate user-controlled topic transitions and multi-modal interview implementation.** 
+**Status: 🔄 Migration Completion Phase - Critical cleanup required before Phase 3C development. 86% complete with final 14% focused on removing deprecated code and updating remaining test files.** 
 
-**Key Achievement**: Superior QuestionSegments architecture fully integrated with comprehensive test coverage, providing robust foundation for enhanced user experience and detailed analytics capabilities. 
+**Key Objective**: Complete clean migration to QuestionSegments architecture, removing all technical debt before proceeding with user experience enhancements. This ensures maintainable, scalable codebase for future development. 

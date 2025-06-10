@@ -522,47 +522,7 @@ export const sessionRouter = createTRPCRouter({
       });
     }),
 
-  // 🟢 GREEN PHASE: getNextQuestion procedure
-  getNextQuestion: protectedProcedure
-    .input(z.object({
-      sessionId: z.string(),
-      userResponse: z.string(),
-    }))
-    .mutation(async ({ input: _input, ctx: _ctx }) => {
-      // This legacy procedure uses the history field and is deprecated
-      throw new TRPCError({
-        code: 'FORBIDDEN',
-        message: 'This legacy procedure is deprecated. Use QuestionSegments procedures instead.',
-      });
-    }),
 
-  // 🟢 GREEN PHASE: updateSessionState procedure  
-  updateSessionState: protectedProcedure
-    .input(z.object({
-      sessionId: z.string(),
-      action: z.enum(['pause', 'resume', 'end']),
-      currentResponse: z.string().optional(),
-    }))
-    .mutation(async ({ input: _input, ctx: _ctx }) => {
-      // This legacy procedure uses the history field and is deprecated
-      throw new TRPCError({
-        code: 'FORBIDDEN',
-        message: 'This legacy procedure is deprecated. Use QuestionSegments procedures instead.',
-      });
-    }),
-
-  // 🟢 GREEN PHASE: resetSession procedure for restarting completed sessions
-  resetSession: protectedProcedure
-    .input(z.object({
-      sessionId: z.string(),
-    }))
-    .mutation(async ({ input: _input, ctx: _ctx }) => {
-      // This legacy procedure uses the history field and is deprecated
-      throw new TRPCError({
-        code: 'FORBIDDEN',
-        message: 'This legacy procedure is deprecated. Use QuestionSegments procedures instead.',
-      });
-    }),
 
   // 🟢 COMPLETED: getActiveSession procedure with real data
   getActiveSession: protectedProcedure
