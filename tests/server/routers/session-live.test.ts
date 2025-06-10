@@ -671,6 +671,41 @@ describe('Session Live Interview tRPC Router - QuestionSegments Migration', () =
       });
     });
 
+    it('should save session progress without ending when endSession is false', async () => {
+      // Arrange
+      const caller = await getTestCaller(testUser);
+      
+      // Verify session is initially active (endTime should be null)
+      const initialSession = await db.sessionData.findUnique({
+        where: { id: testSession.id }
+      });
+      expect(initialSession?.endTime).toBeNull();
+      
+      // Act: Save progress explicitly without ending
+      const result = await caller.session.saveSession({
+        sessionId: testSession.id,
+        endSession: false
+      });
+
+      // Assert: Response indicates session was saved but not ended
+      expect(result).toMatchObject({
+        saved: true,
+        ended: false,
+        timestamp: expect.any(Date),
+      });
+      
+      // Verify endTime is still null (session not ended)
+      const savedSession = await db.sessionData.findUnique({
+        where: { id: testSession.id }
+      });
+      expect(savedSession?.endTime).toBeNull(); // Session still active
+      
+      // Verify updatedAt was refreshed (within last few seconds)
+      const now = new Date();
+      const timeDiff = now.getTime() - savedSession!.updatedAt.getTime();
+      expect(timeDiff).toBeLessThan(5000); // Less than 5 seconds ago
+    });
+
     it('should end session when endSession parameter is true', async () => {
       // Arrange
       const caller = await getTestCaller(testUser);

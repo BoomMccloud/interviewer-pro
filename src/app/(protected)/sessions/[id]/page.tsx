@@ -215,10 +215,35 @@ export default function SessionPage() {
     await handleSendMessage('Voice response processed');
   };
 
+  // 🔗 NEW: Dedicated mutation for saving session progress
+  const saveSessionProgress = api.session.saveSession.useMutation({
+    onSuccess: (result) => {
+      if (result.saved) {
+        console.log('Session progress saved successfully');
+        // Optional: Show success notification or toast
+        // For now, we'll just log to console
+      }
+    },
+    onError: (error) => {
+      console.error('Failed to save session progress:', error);
+      alert('Failed to save session progress. Please try again.');
+    }
+  });
+
   const handleSave = async () => {
     console.log('Saving session state');
-    // TODO: Implement save functionality with new QuestionSegments procedures
-    alert('Save functionality temporarily disabled during migration');
+    
+    try {
+      // Save session progress without ending the session
+      await saveSessionProgress.mutateAsync({ 
+        sessionId,
+        endSession: false // Explicitly save without ending
+      });
+      // Success feedback handled in onSuccess callback
+    } catch (error) {
+      // Error handling happens in onError callback
+      console.error('Error saving session:', error);
+    }
   };
 
   // 🔗 NEW: Dedicated mutation for ending sessions
@@ -418,7 +443,7 @@ export default function SessionPage() {
               isGettingNextTopic={getNextTopicalQuestion.isPending}
               onSave={handleSave}
               onEnd={handleEnd}
-              isSaving={false} // TODO: Will be implemented in Phase 4B with handleSave
+              isSaving={saveSessionProgress.isPending}
               isEnding={endSession.isPending}
             />
           );
@@ -465,7 +490,7 @@ export default function SessionPage() {
               isGettingNextTopic={getNextTopicalQuestion.isPending}
               onSave={handleSave}
               onEnd={handleEnd}
-              isSaving={false} // TODO: Will be implemented in Phase 4B with handleSave
+              isSaving={saveSessionProgress.isPending}
               isEnding={endSession.isPending}
             />
           );
