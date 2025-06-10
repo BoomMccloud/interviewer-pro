@@ -14,10 +14,25 @@ Your app follows a clean **Frontend → tRPC → Gemini API** architecture with 
 graph TB
     Frontend[Frontend Components] --> tRPC[tRPC Procedures]
     tRPC --> Gemini[Gemini API Functions]
+    tRPC --> LiveAPI[Live API Voice Integration]
     Gemini --> AI[Google Gemini AI]
+    LiveAPI --> AI
     AI --> DB[(Database)]
     DB --> Frontend
 ```
+
+### **🎙️ NEW: Audio + Voice Integration Architecture**
+
+**Current Text-Only (Production)**:
+- Interview questions: Text generation via `gemini-2.0-flash-001`
+- User responses: Text input
+- AI responses: Text output
+
+**Planned Audio Integration (Phase 2)**:
+- Interview questions: **Keep text-only** (proven, cost-effective)
+- User responses: **Voice input** via Live API `gemini-2.5-flash-live-001`
+- AI responses: **Voice output** with automatic transcription
+- Analysis: **Text transcripts** from Live API for feedback generation
 
 ---
 
@@ -32,15 +47,22 @@ const MODEL_NAME_TEXT = 'gemini-2.0-flash-001';
 const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY || 'test-key-for-mocking' });
 ```
 
-### **🎯 Core AI Functions (3 Active Functions)**
+### **🎯 Core AI Functions (3 Active + 2 Planned Voice Functions)**
 
-#### **✅ ACTIVELY USED FUNCTIONS**
+#### **✅ ACTIVELY USED FUNCTIONS (Current Text-Only)**
 
 | Function | Temperature | Tokens | Purpose | Used By (tRPC) | Status |
 |----------|-------------|--------|---------|----------------|--------|
 | `getFirstQuestion()` | 0.7 | 1000 | Starts new interviews | `startInterviewSession` | ✅ **ACTIVE** |
 | `continueConversation()` | 0.8 | 400 | Conversational follow-ups within same topic | `submitResponse` | ✅ **ACTIVE** |
 | `getNewTopicalQuestion()` | 0.8 | 800 | User-controlled topic transitions | `getNextTopicalQuestion` | ✅ **ACTIVE** |
+
+#### **🎙️ PLANNED VOICE FUNCTIONS (Phase 2 Audio Integration)**
+
+| Function | Model | Purpose | Modality | Transcription | Status |
+|----------|-------|---------|----------|---------------|--------|
+| `startVoiceConversation()` | `gemini-2.5-flash-live-001` | Voice-based conversations within topic | `AUDIO` | Auto-transcribed | 🚧 **PLANNED** |
+| `generateInterviewSummary()` | `gemini-2.0-flash-001` | Analyze transcripts for feedback | `TEXT` | Input data | 🚧 **PLANNED** |
 
 #### **🔴 DEPRECATED/LEGACY FUNCTIONS**
 
@@ -59,7 +81,9 @@ const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY || 'test-key-for-mocking'
 **DEPRECATED IMPORTS:**
 - `continueInterview`: Imported in `src/server/api/routers/session.ts:6` but **never called**
 
-### **📡 API Call Pattern**
+### **📡 API Call Patterns**
+
+#### **📝 Current Text-Only Pattern**
 ```typescript
 const response = await genAI.models.generateContentStream({
   model: MODEL_NAME_TEXT,
@@ -73,6 +97,44 @@ const response = await genAI.models.generateContentStream({
 const rawAiResponseText = await processStream(response);
 const parsed = parseAiResponse(rawAiResponseText);
 ```
+
+#### **🎙️ Planned Live API Voice Pattern**
+```typescript
+// Voice conversation with automatic transcription
+const session = await genAI.aio.live.connect({
+  model: 'gemini-2.5-flash-live-001',
+  config: { 
+    responseModalities: ['AUDIO'] // Voice responses + auto-transcription
+  }
+});
+
+// Real-time voice conversation
+await session.send(userAudioInput, endOfTurn=true);
+
+for await (const response of session) {
+  const voiceResponse = response.serverContent.parts[0]; // Audio data
+  const transcription = response.transcript; // Automatic transcription
+  
+  // Store both voice and transcript for analysis
+  await storeConversationTurn({
+    audioData: voiceResponse,
+    transcriptText: transcription,
+    timestamp: new Date()
+  });
+}
+```
+
+**⚠️ Important: Backend Streaming vs Frontend Display**
+- **Backend**: Uses `generateContentStream()` for efficient token processing
+- **Frontend**: Displays complete responses only (not streaming UX)
+- **User Experience**: Loading spinner → Complete response appears
+- **Stream Processing**: Internal only via `processStream()` function
+
+**🎙️ Voice Integration Benefits**:
+- **Natural Conversation**: Real-time voice interaction via Live API
+- **Automatic Transcription**: No separate speech-to-text service needed
+- **Analysis Ready**: Transcripts available immediately for feedback generation
+- **Hybrid Approach**: Text questions + voice conversation + transcript analysis
 
 ### **🔄 Helper Functions**
 - `buildSystemInstruction()` - Creates AI persona instructions
@@ -95,6 +157,14 @@ const parsed = parseAiResponse(rawAiResponseText);
 | `getNextTopicalQuestion` | `getNewTopicalQuestion()` | User-controlled topic transitions | `{sessionId}` | `{questionText, keyPoints, questionNumber, ...}` |
 | `getActiveSession` | *(None - DB only)* | Retrieve session state | `{sessionId}` | `{sessionId, isActive, currentQuestion, ...}` |
 | `saveSession` | *(None - DB only)* | Save session progress | `{sessionId, currentResponse?}` | `{saved: true, timestamp}` |
+
+#### **🎙️ Planned Voice Integration Procedures (Phase 2)**
+
+| tRPC Procedure | Calls Gemini Function | Purpose | Input | Output |
+|---|---|---|---|---|
+| `startVoiceConversation` | `startVoiceConversation()` | Start Live API voice session | `{sessionId, currentQuestion}` | `{liveSessionId, webSocketUrl, ...}` |
+| `endVoiceConversation` | *(None - Session cleanup)* | End Live API session | `{sessionId, liveSessionId}` | `{transcripts, summary, ...}` |
+| `generateInterviewSummary` | `generateInterviewSummary()` | Generate feedback from transcripts | `{sessionId, transcripts}` | `{analysis, feedback, recommendations, ...}` |
 
 ### **🔗 Integration Pattern**
 ```typescript
@@ -201,7 +271,7 @@ interface TextInterviewUIProps {
 
 ## 🔄 **4. Complete Data Flow Examples**
 
-### **🚀 A. Starting Interview**
+### **🚀 A. Starting Interview (Current Text-Only)**
 
 ```
 User clicks "Start Interview"
@@ -277,6 +347,58 @@ Parse: parseTopicalResponse(rawText) → { questionText, keyPoints }
 Database: Create new question segment, update currentQuestionIndex
     ↓
 Frontend: Update "Current Question" section with new topic
+```
+
+### **🎙️ D. Voice Conversation Flow (Planned Phase 2)**
+
+```
+User clicks "Start Voice Discussion" for current topic
+    ↓
+Frontend: VoiceInterviewUI.tsx → onStartVoiceConversation()
+    ↓
+tRPC: startVoiceConversation({ sessionId, currentQuestion })
+    ↓
+Backend: session.ts → startVoiceConversation(sessionId, currentQuestion)
+    ↓
+Live API: genAI.aio.live.connect({
+  model: 'gemini-2.5-flash-live-001',
+  config: { responseModalities: ['AUDIO'] }
+})
+    ↓
+Real-time Voice Conversation:
+  User speaks → Live API transcribes → AI responds with voice
+    ↓
+Automatic Transcription: Both user and AI audio → text transcripts
+    ↓
+Database: Store transcripts in conversation history
+    ↓
+Frontend: Real-time audio playback + transcript display
+```
+
+### **📊 E. Interview Analysis Flow (Planned Phase 2)**
+
+```
+User clicks "End Interview" / Voice session ends
+    ↓
+Frontend: InterviewUI.tsx → onEndInterview()
+    ↓
+tRPC: generateInterviewSummary({ sessionId })
+    ↓
+Backend: session.ts → generateInterviewSummary(sessionId, transcripts)
+    ↓
+Gemini API: genAI.models.generateContentStream({
+  model: 'gemini-2.0-flash-001',
+  contents: buildAnalysisPrompt(transcripts, questionHistory, jdResumeText),
+  config: { temperature: 0.3, maxOutputTokens: 2000 }
+})
+    ↓
+Analysis: Comprehensive feedback on both content and delivery
+    ↓
+Parse: Extract interview scores, recommendations, speech patterns
+    ↓
+Database: Save analysis to session feedback
+    ↓
+Frontend: Display interview report with voice-specific insights
 ```
 
 ---
@@ -550,6 +672,8 @@ LLM Response: "How did you approach managing state? Did you use Redux or Context
 ## 📊 **6. Data Structures**
 
 ### **🗃️ Session Data Structure**
+
+#### **📝 Current Text-Only Session Data**
 ```typescript
 interface ActiveSessionData {
   sessionId: string;
@@ -562,9 +686,43 @@ interface ActiveSessionData {
 }
 ```
 
+#### **🎙️ Enhanced Session Data with Voice Support (Planned)**
+```typescript
+interface VoiceEnhancedSessionData extends ActiveSessionData {
+  voiceSessionId?: string;           // Live API session identifier
+  voiceTranscripts: VoiceTranscript[]; // Automatic transcriptions from Live API
+  audioSegments: AudioSegment[];     // Voice conversation segments
+  speechAnalytics: SpeechMetrics;    // Analysis of speaking patterns
+  interviewMode: 'text' | 'voice' | 'hybrid'; // Current interaction mode
+}
+
+interface VoiceTranscript {
+  turnId: string;
+  role: 'user' | 'model';
+  transcriptText: string;            // Auto-transcribed from Live API
+  audioData?: Blob;                  // Optional audio storage
+  timestamp: Date;
+  confidence: number;                // Transcription confidence
+  speechMetrics?: {
+    pace: number;                    // Words per minute
+    pauseDuration: number;           // Average pause length
+    clarity: number;                 // Speech clarity score
+  };
+}
+
+interface AudioSegment {
+  segmentId: string;
+  questionId: string;                // Links to QuestionSegment
+  startTime: Date;
+  endTime: Date;
+  duration: number;                  // In seconds
+  transcripts: VoiceTranscript[];
+}
+```
+
 ### **📝 Gemini API Response Types**
 
-#### **Conversational Response**
+#### **Current Text-Only Responses**
 ```typescript
 interface ConversationalResponse {
   analysis: string;                 // AI analysis of user response
@@ -572,14 +730,58 @@ interface ConversationalResponse {
   followUpQuestion: string;         // Next question within same topic
   rawAiResponseText: string;        // Complete AI response for database
 }
-```
 
-#### **Topical Response**
-```typescript
 interface TopicalQuestionResponse {
   questionText: string;             // New topical question
   keyPoints: string[];              // Guidance points for user
   rawAiResponseText: string;        // Complete AI response for database
+}
+```
+
+#### **🎙️ New Voice-Enhanced Response Types (Planned)**
+```typescript
+interface VoiceConversationResponse {
+  liveSessionId: string;            // Live API session ID
+  webSocketUrl: string;             // Connection URL for frontend
+  initialContext: string;           // Context provided to Live API
+  sessionConfig: {
+    model: 'gemini-2.5-flash-live-001';
+    responseModalities: ['AUDIO'];
+    voiceConfig?: {
+      voice: 'Aoede' | 'Charon' | 'Fenrir' | 'Kore' | 'Puck';
+      speed: number;
+      language: string;
+    };
+  };
+}
+
+interface InterviewSummaryResponse {
+  overallScore: number;             // 1-10 interview performance
+  contentAnalysis: {
+    technicalAccuracy: number;
+    problemSolvingApproach: number;
+    communicationClarity: number;
+    examples: string[];
+    improvements: string[];
+  };
+  speechAnalysis: {                 // NEW: Voice-specific feedback
+    speakingPace: number;           // Words per minute
+    clarityScore: number;           // Speech clarity 1-10
+    confidenceLevel: number;        // Voice confidence 1-10
+    fillerWords: number;            // Count of "um", "uh", etc.
+    recommendations: string[];      // Speech improvement tips
+  };
+  transcriptSummary: string;        // Key points from voice conversation
+  rawAiResponseText: string;        // Complete analysis response
+}
+
+interface LiveApiTranscriptEvent {
+  type: 'user_speech' | 'model_response';
+  transcriptText: string;
+  timestamp: Date;
+  confidence: number;
+  isComplete: boolean;              // Whether turn is finished
+  audioData?: ArrayBuffer;          // Optional audio storage
 }
 ```
 
@@ -774,36 +976,547 @@ This creates a **clean user-controlled interview experience** where:
 
 #### **🔴 Immediate Actions Required**
 
-1. **Remove Deprecated Import**:
+1. **✅ COMPLETED: Remove Deprecated Functions**:
    ```typescript
-   // In src/server/api/routers/session.ts:6
-   // CURRENT (with unused import):
-   import { continueInterview, getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from "~/lib/gemini";
+   // ✅ DONE: Removed from src/lib/gemini.ts:
+   // - continueInterview() - REMOVED ✅
+   // - getNextQuestion() - REMOVED ✅  
+   // - parseAiResponse() - REMOVED ✅
+   ```
+
+2. **🔄 MINOR CLEANUP REMAINING**:
+   ```typescript
+   // In src/lib/gemini.ts - minor cleanup needed:
+   // Line 20: Remove unused MvpAiResponse import
+   import type {
+     JdResumeText,
+     Persona,
+     // MvpAiResponse, // ← REMOVE: No longer used
+     MvpSessionTurn,
+     ConversationalResponse,
+     TopicalQuestionResponse
+   } from '../types';
    
-   // SHOULD BE (clean):
-   import { getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from "~/lib/gemini";
+   // Line 66: Update comment reference to removed function
+   // OLD: "optional, for continueInterview"
+   // NEW: "optional, for conversation context"
+   
+   // Line 149: Remove outdated parseAiResponse comment
+   // Remove the entire comment block about parseAiResponse
    ```
 
-2. **Consider Removing Legacy Functions**:
-   ```typescript
-   // In src/lib/gemini.ts - consider removing or deprecating:
-   // - continueInterview() (line 267) - never called
-   // - getNextQuestion() (line 318) - never called
-   ```
+#### **📈 Benefits of Cleanup - ACHIEVED ✅**
 
-#### **📈 Benefits of Cleanup**
+- **✅ Reduced Bundle Size**: Removed ~200+ lines of unused code
+- **✅ Clear Architecture**: Clean 3-function system (no more confusion)  
+- **✅ Improved Maintenance**: Fewer functions to test and maintain
+- **✅ Cost Optimization**: Removed largest context size function (`continueInterview` ~3000 tokens)
 
-- **Reduced Bundle Size**: Remove ~200+ lines of unused code
-- **Clear Architecture**: 3-function system instead of confusing 5-function system  
-- **Improved Maintenance**: Fewer functions to test and maintain
-- **Cost Optimization**: Remove largest context size function (`continueInterview` ~3000 tokens)
+---
+
+## 🔍 **12. Areas for Improvement**
+
+### **📊 Current Implementation Assessment: 8.5/10**
+
+The implementation demonstrates **strong engineering principles** and **thoughtful design**, but several areas need attention to reach production excellence.
+
+---
+
+### **🔴 Critical Weaknesses Identified**
+
+#### **1. Technical Debt & Legacy Code**
+```typescript
+// CRITICAL ISSUE: Unused imports creating confusion
+// In src/server/api/routers/session.ts:6
+import { continueInterview, getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from "~/lib/gemini";
+//       ^^^^^^^^^^^^^^^^^ NEVER USED - misleading for developers
+```
+
+**Impact**: 
+- Developers might accidentally use deprecated functions
+- Increased bundle size (~200+ lines of unused code)
+- Confusing 5-function vs 3-function architecture
+
+#### **2. Context Management Complexity**
+- **Multiple context builders**: `buildPromptContents()` and `buildNaturalConversationPrompt()` create maintenance burden
+- **Inconsistent history handling**: Some functions use full history, others use truncated
+- **Token optimization unclear**: No explicit monitoring of context size limits
+
+#### **3. Missing Production Monitoring**
+- **No API usage tracking**: Could lead to unexpected costs
+- **Limited performance monitoring**: No latency or success rate tracking
+- **No quality metrics**: No systematic way to measure AI response quality
+
+#### **4. Error Recovery Limitations**
+- **Limited retry logic**: No automatic retries for transient failures
+- **No circuit breaker**: Could fail catastrophically under high load
+- **Generic error messages**: Users don't get specific guidance on failures
+
+#### **5. Scalability Concerns**
+```typescript
+// POTENTIAL ISSUE: No rate limiting visible
+const response = await genAI.models.generateContentStream({
+  model: MODEL_NAME_TEXT,
+  contents: buildPromptContents(...), // Could grow very large
+  config: { temperature: 0.7, maxOutputTokens: 1000 }
+});
+```
+
+**Risks**:
+- No apparent rate limiting for concurrent users
+- Context size could exceed Gemini limits with long conversations
+- No batch processing for multiple requests
+
+#### **6. Security & Configuration Gaps**
+- **API key handling**: No key rotation or validation shown
+- **No input sanitization**: User responses passed directly to AI
+- **Missing environment validation**: Could fail silently in production
+
+---
+
+### **🚀 Detailed Improvement Recommendations**
+
+#### **🔥 Immediate Actions (High Priority)**
+
+##### **1. Clean Up Legacy Code**
+```typescript
+// TASK 1: Remove unused imports in session.ts
+// BEFORE:
+import { continueInterview, getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from "~/lib/gemini";
+
+// AFTER:
+import { getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from "~/lib/gemini";
+
+// TASK 2: Remove or deprecate unused functions from gemini.ts
+// Consider removing:
+// - continueInterview() (line 267) - never called
+// - getNextQuestion() (line 318) - never called
+```
+
+##### **2. Add Production Monitoring**
+```typescript
+// Add metrics to each AI function
+interface GeminiMetrics {
+  recordSuccess(functionName: string, duration: number): void;
+  recordError(functionName: string, error: Error): void;
+  recordTokenUsage(functionName: string, tokens: number): void;
+}
+
+// Example implementation in gemini.ts
+const startTime = Date.now();
+try {
+  const response = await genAI.models.generateContentStream(...);
+  const duration = Date.now() - startTime;
+  metrics.recordSuccess('getFirstQuestion', duration);
+  metrics.recordTokenUsage('getFirstQuestion', estimateTokens(response));
+} catch (error) {
+  metrics.recordError('getFirstQuestion', error);
+  throw error;
+}
+```
+
+##### **3. Implement Rate Limiting**
+```typescript
+// Add rate limiting per user/session
+import { RateLimiter } from 'limiter';
+
+const geminiRateLimiter = new RateLimiter({
+  tokensPerInterval: 10,
+  interval: 'minute'
+});
+
+// In each AI function:
+await geminiRateLimiter.removeTokens(1);
+```
+
+#### **⚡ Medium-Term Improvements**
+
+##### **4. Enhanced Error Recovery**
+```typescript
+// Add retry logic with exponential backoff
+async function callGeminiWithRetry(
+  request: any, 
+  maxRetries = 3,
+  baseDelay = 1000
+): Promise<any> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await genAI.models.generateContentStream(request);
+    } catch (error) {
+      if (attempt === maxRetries) throw error;
+      
+      // Exponential backoff
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
+// Circuit breaker pattern
+class CircuitBreaker {
+  private failureCount = 0;
+  private readonly failureThreshold = 5;
+  private readonly resetTimeout = 60000; // 1 minute
+  private state: 'closed' | 'open' | 'half-open' = 'closed';
+  
+  async call<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.state === 'open') {
+      throw new Error('Circuit breaker is open');
+    }
+    
+    try {
+      const result = await fn();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
+      throw error;
+    }
+  }
+  
+  private onSuccess() {
+    this.failureCount = 0;
+    this.state = 'closed';
+  }
+  
+  private onFailure() {
+    this.failureCount++;
+    if (this.failureCount >= this.failureThreshold) {
+      this.state = 'open';
+      setTimeout(() => {
+        this.state = 'half-open';
+      }, this.resetTimeout);
+    }
+  }
+}
+```
+
+##### **5. Context Size Management**
+```typescript
+// Add context size monitoring and management
+const MAX_CONTEXT_TOKENS = 30000; // Gemini's approximate limit
+const MAX_INPUT_LENGTH = 5000;    // Reasonable user input limit
+
+function estimateTokenCount(contents: Content[]): number {
+  // Rough estimation: 1 token ≈ 4 characters
+  return contents.reduce((total, content) => {
+    const textLength = content.parts.reduce((sum, part) => 
+      sum + (part.text?.length || 0), 0
+    );
+    return total + Math.ceil(textLength / 4);
+  }, 0);
+}
+
+function validateContextSize(contents: Content[]): Content[] {
+  const estimatedTokens = estimateTokenCount(contents);
+  
+  if (estimatedTokens > MAX_CONTEXT_TOKENS) {
+    console.warn(`Context size ${estimatedTokens} exceeds limit, truncating...`);
+    return truncateContext(contents);
+  }
+  
+  return contents;
+}
+
+function truncateContext(contents: Content[]): Content[] {
+  // Keep system instructions and recent history
+  const systemContents = contents.slice(0, 1); // System setup
+  const conversationContents = contents.slice(1);
+  
+  // Keep last N conversation turns that fit within limit
+  let truncated = [...systemContents];
+  let currentTokens = estimateTokenCount(truncated);
+  
+  for (let i = conversationContents.length - 1; i >= 0; i--) {
+    const candidateContent = [conversationContents[i]];
+    const additionalTokens = estimateTokenCount(candidateContent);
+    
+    if (currentTokens + additionalTokens < MAX_CONTEXT_TOKENS) {
+      truncated.push(conversationContents[i]);
+      currentTokens += additionalTokens;
+    } else {
+      break;
+    }
+  }
+  
+  return truncated.reverse(); // Restore chronological order
+}
+```
+
+##### **6. Input Validation & Sanitization**
+```typescript
+// Comprehensive input validation
+function validateAndSanitizeUserInput(input: string): string {
+  if (!input || typeof input !== 'string') {
+    throw new Error('Invalid input: must be a non-empty string');
+  }
+  
+  // Length validation
+  if (input.length > MAX_INPUT_LENGTH) {
+    throw new Error(`Input too long: ${input.length} characters (max: ${MAX_INPUT_LENGTH})`);
+  }
+  
+  // Basic sanitization
+  return input
+    .trim()
+    .replace(/[<>]/g, '') // Basic XSS prevention
+    .replace(/\x00/g, '') // Remove null bytes
+    .slice(0, MAX_INPUT_LENGTH);
+}
+
+// Enhanced session validation
+function validateSessionData(sessionData: any): void {
+  if (!sessionData?.sessionId) {
+    throw new Error('Invalid session: missing sessionId');
+  }
+  
+  if (!sessionData?.personaId) {
+    throw new Error('Invalid session: missing personaId');
+  }
+  
+  if (sessionData.history && !Array.isArray(sessionData.history)) {
+    throw new Error('Invalid session: history must be an array');
+  }
+}
+```
+
+##### **7. Enhanced Configuration Management**
+```typescript
+// Robust environment configuration
+interface GeminiConfig {
+  apiKey: string;
+  modelName: string;
+  maxRetries: number;
+  requestTimeout: number;
+  rateLimitTokens: number;
+  rateLimitInterval: string;
+  circuitBreakerThreshold: number;
+}
+
+function loadGeminiConfig(): GeminiConfig {
+  const apiKey = process.env.GEMINI_API_KEY;
+  
+  if (!apiKey || apiKey === 'test-key-for-mocking') {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('CRITICAL: GEMINI_API_KEY is not set in production');
+    }
+    console.warn('Using mock API key - only for testing');
+  }
+  
+  return {
+    apiKey: apiKey || 'test-key-for-mocking',
+    modelName: process.env.GEMINI_MODEL_NAME || 'gemini-2.0-flash-001',
+    maxRetries: parseInt(process.env.GEMINI_MAX_RETRIES || '3'),
+    requestTimeout: parseInt(process.env.GEMINI_TIMEOUT || '30000'),
+    rateLimitTokens: parseInt(process.env.GEMINI_RATE_LIMIT_TOKENS || '10'),
+    rateLimitInterval: process.env.GEMINI_RATE_LIMIT_INTERVAL || 'minute',
+    circuitBreakerThreshold: parseInt(process.env.GEMINI_CIRCUIT_BREAKER_THRESHOLD || '5')
+  };
+}
+
+// API key validation
+function validateApiKey(apiKey: string): boolean {
+  // Basic format validation (adjust based on actual Gemini key format)
+  return apiKey.length > 20 && !apiKey.includes('test-key');
+}
+```
+
+#### **🔮 Long-Term Enhancements**
+
+##### **8. Real-Time Streaming UI**
+```typescript
+// Future: Implement real-time streaming UI for better UX
+interface StreamingResponse {
+  sessionId: string;
+  isComplete: boolean;
+  chunk: string;
+  totalResponse?: string;
+}
+
+// Frontend streaming handler
+const handleStreamingResponse = async (message: string) => {
+  const [currentResponse, setCurrentResponse] = useState('');
+  
+  for await (const chunk of api.session.submitResponseStream.useMutation()) {
+    setCurrentResponse(prev => prev + chunk.text);
+    
+    if (chunk.isComplete) {
+      // Finalize response and update conversation history
+      await activeSession.refetch();
+    }
+  }
+};
+
+// Backend streaming endpoint
+async function* streamResponse(input: { sessionId: string; userResponse: string }) {
+  const response = await genAI.models.generateContentStream({...});
+  
+  for await (const chunk of response) {
+    yield {
+      sessionId: input.sessionId,
+      isComplete: false,
+      chunk: chunk.text,
+    };
+  }
+  
+  yield {
+    sessionId: input.sessionId,
+    isComplete: true,
+    totalResponse: fullResponse,
+  };
+}
+```
+
+**Benefits of Streaming UI:**
+- ⚡ **Better UX**: Users see responses appearing in real-time
+- 🧠 **Perceived Performance**: Feels faster even if total time is same  
+- 📱 **Modern Feel**: Matches ChatGPT/Claude-style interfaces
+- 🔄 **Engagement**: Users stay engaged during longer AI responses
+
+##### **9. Advanced Analytics & Monitoring**
+```typescript
+// Comprehensive analytics system
+interface ConversationAnalytics {
+  sessionId: string;
+  totalQuestions: number;
+  averageResponseTime: number;
+  topicsCovered: string[];
+  userEngagementScore: number;
+  aiQualityScore: number;
+  technicalIssues: string[];
+}
+
+class GeminiAnalytics {
+  async trackConversationQuality(
+    sessionId: string,
+    userResponse: string,
+    aiResponse: string,
+    responseTime: number
+  ): Promise<void> {
+    // Implement quality scoring logic
+    const qualityScore = this.calculateQualityScore(userResponse, aiResponse);
+    
+    // Store in analytics database
+    await this.storeAnalytics({
+      sessionId,
+      timestamp: new Date(),
+      responseTime,
+      qualityScore,
+      userResponseLength: userResponse.length,
+      aiResponseLength: aiResponse.length
+    });
+  }
+  
+  private calculateQualityScore(userResponse: string, aiResponse: string): number {
+    // Implement scoring algorithm based on:
+    // - Response relevance
+    // - Follow-up question quality
+    // - Conversation flow
+    return 0.85; // Placeholder
+  }
+}
+```
+
+##### **10. Performance Optimization**
+```typescript
+// Response caching for common scenarios
+class GeminiResponseCache {
+  private cache = new Map<string, any>();
+  private readonly TTL = 3600000; // 1 hour
+  
+  getCacheKey(persona: Persona, jdResumeText: JdResumeText): string {
+    return `${persona.id}-${this.hashText(jdResumeText.jdText + jdResumeText.resumeText)}`;
+  }
+  
+  async getFirstQuestion(persona: Persona, jdResumeText: JdResumeText): Promise<any | null> {
+    const key = `first-question-${this.getCacheKey(persona, jdResumeText)}`;
+    const cached = this.cache.get(key);
+    
+    if (cached && Date.now() - cached.timestamp < this.TTL) {
+      return cached.data;
+    }
+    
+    return null;
+  }
+  
+  setFirstQuestion(persona: Persona, jdResumeText: JdResumeText, response: any): void {
+    const key = `first-question-${this.getCacheKey(persona, jdResumeText)}`;
+    this.cache.set(key, {
+      data: response,
+      timestamp: Date.now()
+    });
+  }
+  
+  private hashText(text: string): string {
+    // Simple hash function for cache keys
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString();
+  }
+}
+```
+
+---
+
+### **📋 Implementation Priority Matrix**
+
+| Task | Priority | Effort | Impact | Timeline |
+|------|----------|--------|---------|----------|
+| ✅ Remove legacy code | ✅ COMPLETED | Low | High | ✅ DONE |
+| Add basic monitoring | 🔥 Critical | Medium | High | 1 week |
+| Implement rate limiting | 🔥 Critical | Medium | High | 1 week |
+| Enhanced error recovery | ⚡ High | High | Medium | 2 weeks |
+| Context size management | ⚡ High | Medium | Medium | 1 week |
+| Input validation | ⚡ High | Low | Medium | 3 days |
+| Configuration management | ⚡ High | Medium | Medium | 1 week |
+| Real-time streaming UI | 🔮 Future | Medium | High | 2 weeks |
+| Advanced analytics | 🔮 Future | High | Low | 1 month |
+| Response caching | 🔮 Future | Medium | Low | 2 weeks |
+
+---
+
+### **🎯 Expected Outcomes**
+
+After implementing these improvements:
+
+#### **✅ Immediate Benefits (Week 1)**
+- **✅ Cleaner codebase**: Removed 200+ lines of unused code
+- **Better monitoring**: Track API usage and performance  
+- **Improved reliability**: Rate limiting prevents API abuse
+
+#### **🚀 Medium-term Benefits (Month 1)**
+- **Enhanced resilience**: Retry logic and circuit breakers
+- **Better user experience**: Improved error messages and recovery
+- **Cost optimization**: Context size management reduces API costs
+
+#### **🌟 Long-term Benefits (Quarter 1)**
+- **Production-grade monitoring**: Comprehensive analytics and alerting
+- **Scalability**: Caching and performance optimizations
+- **Maintainability**: Clear architecture with robust error handling
+
+---
+
+### **📊 Success Metrics**
+
+| Metric | Current | Target | Measurement |
+|--------|---------|--------|-------------|
+| Code Coverage | ~85% | 95% | Jest reports |
+| API Error Rate | Unknown | <1% | Monitoring dashboard |
+| Response Time | Unknown | <2s P95 | Performance metrics |
+| User Satisfaction | Unknown | >4.5/5 | User feedback |
+| Maintenance Time | Unknown | -50% | Developer surveys |
 
 ---
 
 ## 🎉 **Summary**
 
-Your Gemini API integration is **production-ready** with:
+Your Gemini API integration is **production-ready** with **voice capabilities planned**:
 
+### **✅ Current Text-Only Production System:**
 ✅ **Clean Architecture**: Well-separated frontend, backend, and AI layers  
 ✅ **User Control**: Predictable button behaviors mapping to specific AI functions  
 ✅ **Type Safety**: End-to-end TypeScript with comprehensive error handling  
@@ -811,7 +1524,21 @@ Your Gemini API integration is **production-ready** with:
 ✅ **Scalable Design**: Easy to add new AI functions and capabilities  
 ✅ **Smart Data Flow**: QuestionSegments architecture supports advanced analytics  
 
-The integration successfully delivers a **user-controlled interview experience** where users can have natural conversations within topics and transition to new topics when ready, all powered by Google's Gemini AI with reliable state management and comprehensive error handling.
+### **🎙️ Planned Voice Integration (Phase 2):**
+🚧 **Hybrid Approach**: Text questions + Voice conversations + Transcript analysis  
+🚧 **Live API Integration**: Real-time voice via `gemini-2.5-flash-live-001`  
+🚧 **Automatic Transcription**: No separate speech-to-text service needed  
+🚧 **Enhanced Analytics**: Voice delivery feedback + content analysis  
+🚧 **Seamless Transition**: Users can switch between text and voice modes  
+
+### **🏗️ Architecture Benefits:**
+- **Cost Optimization**: Text for questions (cheap), voice for conversation (valuable)
+- **Proven Foundation**: Keep working text system, add voice incrementally
+- **Rich Analysis**: Both content quality and speech delivery insights
+- **User Choice**: Flexible modality selection based on user preference
+- **Transcript Storage**: Voice conversations become searchable text for analysis
+
+The integration successfully delivers a **user-controlled interview experience** where users can have natural conversations within topics and transition to new topics when ready, all powered by Google's Gemini AI with reliable state management, comprehensive error handling, and **planned voice enhancement** for natural speech interaction with automatic transcription.
 
 ---
 

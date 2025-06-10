@@ -18,7 +18,6 @@ import type {
 import type {
   JdResumeText, // Corrected MvpJdResumeText to JdResumeText
   Persona, // Type for Persona definition (at least { id: string; name: string; systemPrompt: string; })
-  MvpAiResponse, // Type for the structured AI response
   MvpSessionTurn, // Type for storing a single turn in session history ({ role: 'user' | 'model', text: string, rawAiResponseText?: string, analysis?: string, feedbackPoints?: string[], suggestedAlternative?: string })
   ConversationalResponse,
   TopicalQuestionResponse
@@ -64,7 +63,7 @@ export function buildSystemInstruction(persona: Persona): string {
  * @param jdResumeText - The user's JD and Resume text.
  * @param persona - The persona definition (for context setting).
  * @param history - The previous conversation history.
- * @param currentUserResponse - The text of the user's last response (optional, for continueInterview).
+ * @param currentUserResponse - The text of the user's last response (optional, for conversation context).
  * @returns An array of Content objects formatted for the Gemini API.
  */
 export function buildPromptContents(
@@ -145,72 +144,8 @@ async function processStream(streamResponse: AsyncIterable<GenerateContentRespon
 }
 
 
-// Helper to parse AI response based on XML delimiters
-/**
- * Parses the raw text response from the AI into a structured MvpAiResponse object.
- * Uses defined delimiters (<QUESTION>, <KEY_POINTS>, <ANALYSIS>, etc.).
- * @param rawResponse - The raw text string received from the Gemini API.
- * @returns A structured object containing the extracted parts.
- */
-/**
- * @deprecated This function is for legacy structured AI responses only.
- * Modern functions use direct response processing or specialized parsers.
- * Will be removed in a future version.
- */
-export function parseAiResponse(rawResponse: string): MvpAiResponse {
-    const cleanedResponse = rawResponse ? rawResponse.trim() : "";
-
-    const questionMatch = /<QUESTION>(.*?)<\/QUESTION>/s.exec(cleanedResponse);
-    const keyPointsMatch = /<KEY_POINTS>(.*?)<\/KEY_POINTS>/s.exec(cleanedResponse);
-    const analysisMatch = /<ANALYSIS>(.*?)<\/ANALYSIS>/s.exec(cleanedResponse);
-    const feedbackMatch = /<FEEDBACK>(.*?)<\/FEEDBACK>/s.exec(cleanedResponse);
-    const altMatch = /<SUGGESTED_ALTERNATIVE>(.*?)<\/SUGGESTED_ALTERNATIVE>/s.exec(cleanedResponse);
-
-    const nextQuestion = questionMatch?.[1]?.trim() ?? "Error: Could not extract question from AI response.";
-    const analysis = analysisMatch?.[1]?.trim() ?? "No analysis provided for this answer.";
-    const feedbackRaw = feedbackMatch?.[1]?.trim() ?? "";
-    const suggestedAlternative = altMatch?.[1]?.trim() ?? "No suggested alternative provided for this answer.";
-    
-    // Parse key points from the KEY_POINTS section
-    const keyPointsRaw = keyPointsMatch?.[1]?.trim() ?? "";
-    const keyPoints = keyPointsRaw
-        .split('\n')
-        .map(point => point.replace(/^-\s*/, '').trim()) // Remove leading dashes and whitespace
-        .filter(point => point.length > 0);
-
-    const feedbackPoints = feedbackRaw
-        .split('\n')
-        .map(point => point.replace(/^-\s*/, '').trim()) // Remove leading dashes and whitespace  
-        .filter(point => point.length > 0);
-
-    // Log warnings for missing tags
-    if (!questionMatch) console.warn("AI response missing <QUESTION> tag, raw response:", rawResponse);
-    if (!keyPointsMatch) console.warn("AI response missing <KEY_POINTS> tag, raw response:", rawResponse);
-    
-    // Only warn about missing analysis/feedback for responses (not first questions)
-    if (cleanedResponse.includes('<ANALYSIS>') && !analysisMatch) {
-        console.warn("AI response missing <ANALYSIS> tag, raw response:", rawResponse);
-    }
-    if (cleanedResponse.includes('<FEEDBACK>') && !feedbackMatch) {
-        console.warn("AI response missing <FEEDBACK> tag, raw response:", rawResponse);
-    }
-
-    // Check if we're using fallbacks and log appropriately
-    if (keyPoints.length === 0) {
-        console.warn('🚨 FALLBACK TRIGGERED: parseAiResponse using fallback key points (AI response missing KEY_POINTS)');
-    }
-    if (feedbackPoints.length === 0) {
-        console.warn('🚨 FALLBACK TRIGGERED: parseAiResponse using fallback feedback (AI response missing FEEDBACK)');
-    }
-
-    return {
-        nextQuestion,
-        keyPoints: keyPoints.length > 0 ? keyPoints : ["Focus on your specific role [FALLBACK]", "Highlight technologies used [FALLBACK]", "Discuss challenges overcome [FALLBACK]"],
-        analysis,
-        feedbackPoints: feedbackPoints.length > 0 ? feedbackPoints : ["No specific feedback provided. [FALLBACK]"],
-        suggestedAlternative: suggestedAlternative || "No suggested alternative provided."
-    };
-}
+// Modern AI response processing uses direct stream processing and specialized parsers
+// Legacy XML parsing has been removed in favor of natural language responses
 
 
 // --- Core AI Interaction Functions (MVP - using generateContentStream) ---

@@ -52,14 +52,13 @@ jest.mock('~/lib/personaService', () => ({
 }));
 
 // Import the mocked functions to get references to them for tests
-import { getFirstQuestion, continueConversation, getNewTopicalQuestion, parseAiResponse } from '~/lib/gemini';
+import { getFirstQuestion, continueConversation, getNewTopicalQuestion } from '~/lib/gemini';
 import { getPersona } from '~/lib/personaService';
 
 // Cast them to jest.MockedFunction for type safety with mock methods
 const mockGetFirstQuestionFn = getFirstQuestion as jest.MockedFunction<typeof getFirstQuestion>;
 const mockContinueConversationFn = continueConversation as jest.MockedFunction<typeof continueConversation>;
 const mockGetNewTopicalQuestionFn = getNewTopicalQuestion as jest.MockedFunction<typeof getNewTopicalQuestion>;
-const mockParseAiResponseFn = parseAiResponse as jest.MockedFunction<typeof parseAiResponse>;
 const mockGetPersonaFn = getPersona as jest.MockedFunction<typeof getPersona>;
 
 const MOCK_PERSONA_ID = 'swe-interviewer-standard'; // Updated to use valid persona ID
@@ -110,7 +109,6 @@ describe('Session tRPC Router', () => {
     mockGetFirstQuestionFn.mockReset();
     mockContinueConversationFn.mockReset();
     mockGetNewTopicalQuestionFn.mockReset();
-    mockParseAiResponseFn.mockReset();
     mockGetPersonaFn.mockReset();
     (mockedAuth as jest.Mock).mockReset(); // Reset the auth mock
 
@@ -119,15 +117,6 @@ describe('Session tRPC Router', () => {
     mockGetFirstQuestionFn.mockResolvedValue({
       questionText: 'Default first question?',
       rawAiResponseText: '<QUESTION>Default first question?</QUESTION>',
-    });
-    
-    // Added mock for parseAiResponse to handle QuestionSegments properly
-    mockParseAiResponseFn.mockReturnValue({
-      nextQuestion: 'Default first question?',
-      keyPoints: ['Focus on your experience', 'Provide specific examples', 'Explain your approach'],
-      analysis: 'Default analysis',
-      feedbackPoints: ['Default feedback'],
-      suggestedAlternative: 'Default alternative',
     });
     
     mockContinueConversationFn.mockResolvedValue({
@@ -337,11 +326,6 @@ describe('Session tRPC Router', () => {
       mockGetFirstQuestionFn.mockResolvedValue({
         questionText: mockFirstQuestionText,
         rawAiResponseText: `<QUESTION>${mockFirstQuestionText}</QUESTION>`,
-      });
-      
-      mockParseAiResponseFn.mockReturnValue({
-        nextQuestion: mockFirstQuestionText,
-        keyPoints: mockKeyPoints,
       });
 
       // Act
