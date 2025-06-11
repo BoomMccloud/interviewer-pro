@@ -466,11 +466,6 @@ export interface FeedbackConversation {
   updatedAt: Date;
 }
 
-export const zodFeedbackConversationHistory = z.array(z.object({
-    role: z.enum(['user', 'ai']),
-    content: z.string(),
-}));
-
 export type OverallAssessment = z.infer<typeof zodOverallAssessment>;
 export const zodOverallAssessment = z.object({
   summary: z.string(),

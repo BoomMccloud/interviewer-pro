@@ -330,11 +330,11 @@ export async function getOverallAssessmentFromLLM(
 /**
  * Generates specific feedback for a single question and answer exchange.
  * @param {QuestionSegment} question - The specific question segment to analyze.
- * @returns {Promise<{ contentFeedback: string; clarityFeedback: string; confidenceFeedback: string; }>} Feedback object.
+ * @returns {Promise<{ contentFeedback: string; clarityFeedback: string; confidenceFeedback: string; suggestedAnswer: string; }>} Feedback object.
  */
 export async function getQuestionFeedbackFromLLM(
     question: QuestionSegment
-): Promise<{ contentFeedback: string; clarityFeedback: string; confidenceFeedback: string; }> {
+): Promise<{ contentFeedback: string; clarityFeedback: string; confidenceFeedback: string; suggestedAnswer: string; }> {
     console.log(`Generating feedback for question: "${question.question}"`);
 
     const conversationTranscript = question.conversation.map(t => `${t.role}: ${t.content}`).join('\n');
@@ -367,6 +367,10 @@ export async function getQuestionFeedbackFromLLM(
         <CONFIDENCE_FEEDBACK>
         Assess the perceived confidence in their response. Did they sound knowledgeable?
         </CONFIDENCE_FEEDBACK>
+
+        <SUGGESTED_ANSWER>
+        Provide a well-structured, example answer that effectively addresses the question and key points. This answer should follow the STAR method (Situation, Task, Action, Result) where appropriate.
+        </SUGGESTED_ANSWER>
     `;
 
     try {
@@ -384,14 +388,16 @@ export async function getQuestionFeedbackFromLLM(
         const contentFeedback = /<CONTENT_FEEDBACK>(.*?)<\/CONTENT_FEEDBACK>/s.exec(responseText)?.[1]?.trim() ?? "N/A";
         const clarityFeedback = /<CLARITY_FEEDBACK>(.*?)<\/CLARITY_FEEDBACK>/s.exec(responseText)?.[1]?.trim() ?? "N/A";
         const confidenceFeedback = /<CONFIDENCE_FEEDBACK>(.*?)<\/CONFIDENCE_FEEDBACK>/s.exec(responseText)?.[1]?.trim() ?? "N/A";
+        const suggestedAnswer = /<SUGGESTED_ANSWER>(.*?)<\/SUGGESTED_ANSWER>/s.exec(responseText)?.[1]?.trim() ?? "Could not generate a suggested answer.";
 
-        return { contentFeedback, clarityFeedback, confidenceFeedback };
+        return { contentFeedback, clarityFeedback, confidenceFeedback, suggestedAnswer };
     } catch (error) {
         console.error('Error getting question feedback from LLM:', error);
         return {
             contentFeedback: "Error generating feedback.",
             clarityFeedback: "Error generating feedback.",
-            confidenceFeedback: "Error generating feedback."
+            confidenceFeedback: "Error generating feedback.",
+            suggestedAnswer: "Error generating suggested answer."
         };
     }
 }

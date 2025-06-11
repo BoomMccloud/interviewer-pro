@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { type QuestionSegment } from '~/types';
 import { api } from '~/trpc/react';
 import Spinner from '~/components/UI/Spinner';
-import InteractiveCoach from './InteractiveCoach';
 import InitialFeedbackDisplay from './InitialFeedbackDisplay';
 
 interface QuestionFeedbackSectionProps {
@@ -51,10 +50,13 @@ export default function QuestionFeedbackSection({ segment, sessionId }: Question
         ) : error ? (
           <p className="text-red-600">{error.message}</p>
         ) : initialFeedback ? (
-          <div>
+          <div className="space-y-6">
             <InitialFeedbackDisplay feedback={initialFeedback} />
-            <div className="mt-4">
-              <InteractiveCoach sessionId={sessionId} questionId={segment.questionId} />
+            <div>
+              <h4 className="font-semibold text-gray-800 dark:text-gray-200">Example Answer:</h4>
+              <div className="prose prose-sm mt-2 max-w-none rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800 dark:prose-invert">
+                <p>{initialFeedback.suggestedAnswer}</p>
+              </div>
             </div>
           </div>
         ) : null}

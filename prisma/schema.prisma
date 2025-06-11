@@ -44,7 +44,6 @@ model User {
   sessions              Session[] // Old, for next-auth
   interviewSessions     SessionData[] // New, for app data
   jdResumeTexts         JdResumeText[]
-  feedbackConversations FeedbackConversation[]
 
   @@index([id])
 }
@@ -57,6 +56,28 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+model SessionData {
+  id                   String    @id @default(cuid())
+  status               String    @default("active") // e.g., active, completed, paused
+  personaId            String
+  durationInSeconds    Int
+  questionSegments     Json // Will store an array of QuestionSegment
+  currentQuestionIndex Int       @default(0)
+  overallSummary       String?
+  
+  jdResumeTextId String?
+  jdResumeText   JdResumeText? @relation(fields: [jdResumeTextId], references: [id])
+
+  startTime DateTime?
+  endTime   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+}
+
 model JdResumeText {
   id                String        @id @default(cuid())
   jdText            String
@@ -66,60 +87,4 @@ model JdResumeText {
   userId            String
   user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   interviewSessions SessionData[]
-}
-
-model SessionData {
-  id                   String    @id @default(cuid())
-  status               String    @default("active") // E.g., "active", "completed"
-  personaId            String
-  durationInSeconds    Int
-  questionSegments     Json // Array of QuestionSegment
-  currentQuestionIndex Int?
-  overallSummary       String?
-  jdResumeTextId       String?
-  jdResumeText         JdResumeText? @relation(fields: [jdResumeTextId], references: [id])
-
-  // Timestamps
-  startTime DateTime?
-  endTime   DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  // Relations
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // Relation to feedback conversations
-  feedbackConversations FeedbackConversation[]
-
-  @@index([userId])
-}
-
-// ===============================================================================================
-// NEW MODEL for Storing Interactive Feedback Conversations
-// ===============================================================================================
-
-// Stores the chat history for a specific question within a completed interview session report.
-// This allows users to have a stateful, coaching conversation with the AI about their answers
-// and to view this conversation again later.
-model FeedbackConversation {
-  id          String    @id @default(cuid())
-  sessionDataId String
-  sessionData SessionData @relation(fields: [sessionDataId], references: [id], onDelete: Cascade)
-
-  // Identifies which question this feedback is for, e.g., "q1_opening" from QuestionSegment
-  questionId  String
-
-  // Stores the turns of the chat between the user and the AI coach.
-  // Format: [{ role: "user" | "ai", content: "...", timestamp: "ISO_STRING" }]
-  history     Json      @default("[]")
-
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  @@unique([sessionDataId, questionId]) // Ensures one feedback thread per question per session
-  @@index([userId])
 }
