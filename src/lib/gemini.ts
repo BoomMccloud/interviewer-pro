@@ -20,7 +20,9 @@ import type {
   Persona, // Type for Persona definition (at least { id: string; name: string; systemPrompt: string; })
   MvpSessionTurn, // Type for storing a single turn in session history ({ role: 'user' | 'model', text: string, rawAiResponseText?: string, analysis?: string, feedbackPoints?: string[], suggestedAlternative?: string })
   ConversationalResponse,
-  TopicalQuestionResponse
+  TopicalQuestionResponse,
+  QuestionSegment,
+  OverallAssessment,
 } from '../types';
 
 // --- Configuration & Client Initialization ---
@@ -145,7 +147,37 @@ async function processStream(streamResponse: AsyncIterable<GenerateContentRespon
 
 
 // Modern AI response processing uses direct stream processing and specialized parsers
-// Legacy XML parsing has been removed in favor of natural language responses
+function parseStructuredResponse(rawResponse: string): {
+  questionText: string;
+  keyPoints: string[];
+  analysis: string;
+  feedback: string;
+  suggestedAlternative: string;
+} {
+  const cleanedResponse = rawResponse ? rawResponse.trim() : "";
+
+  const questionMatch = /<QUESTION>(.*?)<\/QUESTION>/s.exec(cleanedResponse);
+  const keyPointsMatch = /<KEY_POINTS>(.*?)<\/KEY_POINTS>/s.exec(cleanedResponse);
+  const analysisMatch = /<ANALYSIS>(.*?)<\/ANALYSIS>/s.exec(cleanedResponse);
+  const feedbackMatch = /<FEEDBACK>(.*?)<\/FEEDBACK>/s.exec(cleanedResponse);
+  const suggestedAlternativeMatch = /<SUGGESTED_ALTERNATIVE>(.*?)<\/SUGGESTED_ALTERNATIVE>/s.exec(cleanedResponse);
+
+  const questionText = questionMatch?.[1]?.trim() ?? "";
+  const keyPointsRaw = keyPointsMatch?.[1]?.trim() ?? "";
+  
+  const keyPoints = keyPointsRaw
+    .split('\n')
+    .map(point => point.replace(/^[-•*]\s*/, '').trim())
+    .filter(point => point.length > 5);
+
+  return {
+    questionText,
+    keyPoints,
+    analysis: analysisMatch?.[1]?.trim() ?? "N/A",
+    feedback: feedbackMatch?.[1]?.trim() ?? "N/A",
+    suggestedAlternative: suggestedAlternativeMatch?.[1]?.trim() ?? "N/A",
+  };
+}
 
 
 // --- Core AI Interaction Functions (MVP - using generateContentStream) ---
@@ -159,8 +191,9 @@ async function processStream(streamResponse: AsyncIterable<GenerateContentRespon
  */
 export async function getFirstQuestion(
   jdResumeText: JdResumeText,
-  persona: Persona
-): Promise<{ questionText: string; rawAiResponseText: string }> {
+  persona: Persona,
+  questionSegments: QuestionSegment[],
+): Promise<TopicalQuestionResponse> {
   try {
     // Build the contents for the initial prompt (no history, no current user response)
     // System instruction is now part of buildPromptContents
@@ -184,14 +217,14 @@ export async function getFirstQuestion(
          throw new Error('Gemini returned an empty response.');
     }
 
-    // For the first question, we use the AI response directly (modern approach)
-    // The AI generates natural, conversational questions without requiring structured parsing
-    const questionText = rawAiResponseText.trim();
+    // NEW: Parse the structured response
+    const parsedResponse = parseStructuredResponse(rawAiResponseText);
 
     // For the first question, we only need the question text for the frontend,
     // but we save the raw response text to the DB for history context in future turns.
     return {
-        questionText: questionText || "Error: Could not extract question from AI response.",
+        questionText: parsedResponse.questionText || "Error: Could not extract question from AI response.",
+        keyPoints: parsedResponse.keyPoints,
         rawAiResponseText: rawAiResponseText // Save the full structured response text
     };
 
@@ -205,9 +238,33 @@ export async function getFirstQuestion(
     
     return {
       questionText: fallbackQuestion,
+      keyPoints: getFallbackKeyPoints(fallbackQuestion),
       rawAiResponseText: `FALLBACK_RESPONSE: AI generation failed, using fallback question. Original error: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
+}
+
+/**
+ * Generates a high-level assessment of an interview session using the LLM.
+ * This is intended for the report page.
+ * @param {JdResumeText} jdResumeText - The JD and Resume text.
+ * @param {Persona} persona - The interviewer persona.
+ * @param {QuestionSegment[]} questionSegments - The full conversational history.
+ * @returns {Promise<OverallAssessment>} - The structured assessment from the AI.
+ */
+export async function getOverallAssessmentFromLLM(
+  jdResumeText: JdResumeText,
+  persona: Persona,
+  questionSegments: QuestionSegment[],
+): Promise<OverallAssessment> {
+    // For now, we'll just return a mock object.
+    // In the future, this will build a prompt and call the Gemini API.
+    console.log('Called mock getOverallAssessmentFromLLM');
+    return Promise.resolve({
+        overallFit: [
+            { competency: 'Example Competency', assessment: 'Good', score: 8 },
+        ]
+    });
 }
 
 // ==============================================
@@ -342,7 +399,7 @@ export async function getNewTopicalQuestion(
     }
 
     // Enhanced topical response parsing
-    const parsed = parseTopicalResponse(rawAiResponseText);
+    const parsed = parseStructuredResponse(rawAiResponseText);
 
     // Validate question quality and topic uniqueness
     if (!parsed.questionText || parsed.questionText.length < 15) {
@@ -442,32 +499,6 @@ Do NOT repeat previously covered topics.`
 // Functions removed - were unused legacy code
 
 // Function removed - was unused legacy code
-
-function parseTopicalResponse(rawResponse: string): {
-  questionText: string;
-  keyPoints: string[];
-} {
-  const cleanedResponse = rawResponse ? rawResponse.trim() : "";
-
-  const questionMatch = /<QUESTION>(.*?)<\/QUESTION>/s.exec(cleanedResponse);
-  const keyPointsMatch = /<KEY_POINTS>(.*?)<\/KEY_POINTS>/s.exec(cleanedResponse);
-
-  const questionText = questionMatch?.[1]?.trim() ?? "";
-  const keyPointsRaw = keyPointsMatch?.[1]?.trim() ?? "";
-
-  // Enhanced key points parsing
-  const keyPoints = keyPointsRaw
-    .split('\n')
-    .map(point => point.replace(/^[-•*]\s*/, '').trim()) // Handle different bullet styles
-    .filter(point => point.length > 5); // Filter out very short points
-
-  return {
-    questionText,
-    keyPoints,
-  };
-}
-
-// Enhanced fallback functions
 
 function generateFallbackQuestion(jdResumeText: JdResumeText, coveredTopics?: string[]): string {
   console.log('🔄 FALLBACK FUNCTION: generateFallbackQuestion called');

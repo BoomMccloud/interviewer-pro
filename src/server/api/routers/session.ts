@@ -116,7 +116,7 @@ export const sessionRouter = createTRPCRouter({
         questionNumber: 1,
         questionType: "opening",
         question: firstQuestionResponse.questionText,
-        keyPoints: [], // Will be extracted from AI response
+        keyPoints: firstQuestionResponse.keyPoints, // Will be extracted from AI response
         startTime: new Date().toISOString(),
         endTime: null, // Active question
         conversation: [
@@ -131,11 +131,13 @@ export const sessionRouter = createTRPCRouter({
 
       // Use fallback key points (modern approach - AI generates natural questions)
       // The legacy parseAiResponse is deprecated, we use contextual fallbacks instead
-      firstQuestionSegment.keyPoints = [
-        "Focus on your specific role and contributions",
-        "Highlight technologies and tools you used", 
-        "Discuss challenges faced and how you overcame them"
-      ];
+      if (!firstQuestionSegment.keyPoints || firstQuestionSegment.keyPoints.length === 0) {
+        firstQuestionSegment.keyPoints = [
+          "Focus on your specific role and contributions",
+          "Highlight technologies and tools you used", 
+          "Discuss challenges faced and how you overcame them"
+        ];
+      }
 
       // Create session with populated questionSegments
       const newSession = await db.sessionData.create({
@@ -431,7 +433,7 @@ export const sessionRouter = createTRPCRouter({
         questionNumber: 1,
         questionType: "opening",
         question: questionResult.questionText,
-        keyPoints: [], // Will be extracted from AI response
+        keyPoints: questionResult.keyPoints, // Will be extracted from AI response
         startTime: new Date().toISOString(),
         endTime: null, // Active question
         conversation: [
@@ -446,11 +448,13 @@ export const sessionRouter = createTRPCRouter({
 
       // Use fallback key points (modern approach - AI generates natural questions)
       // The legacy parseAiResponse is deprecated, we use contextual fallbacks instead
-      firstQuestionSegment.keyPoints = [
-        "Focus on your specific role and contributions",
-        "Highlight technologies and tools you used", 
-        "Discuss challenges faced and how you overcame them"
-      ];
+      if (!firstQuestionSegment.keyPoints || firstQuestionSegment.keyPoints.length === 0) {
+        firstQuestionSegment.keyPoints = [
+          "Focus on your specific role and contributions",
+          "Highlight technologies and tools you used", 
+          "Discuss challenges faced and how you overcame them"
+        ];
+      }
       
       // Update session with question segments
       await ctx.db.sessionData.update({

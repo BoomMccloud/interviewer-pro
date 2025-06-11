@@ -456,4 +456,18 @@ export const zodGeneratedQuestion = z.object({
   rawAiResponse: z.string(),
 });
 
+export interface FeedbackConversation {
+  id: string;
+  userId: string;
+  sessionDataId: string;
+  questionId: string;
+  history: { role: 'user' | 'ai'; content: string }[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OverallAssessment {
+    overallFit: { competency: string; assessment: string; score: number }[];
+}
+
 // ===================================================================
