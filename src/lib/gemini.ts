@@ -369,7 +369,7 @@ export async function getQuestionFeedbackFromLLM(
         </CONFIDENCE_FEEDBACK>
 
         <SUGGESTED_ANSWER>
-        Provide a well-structured, example answer that effectively addresses the question and key points. This answer should follow the STAR method (Situation, Task, Action, Result) where appropriate.
+        Provide a well-structured, example answer that effectively addresses the question and key points. This answer should follow the STAR method, with each section clearly marked with "(Situation)", "(Task)", "(Action)", and "(Result)" inline.
         </SUGGESTED_ANSWER>
     `;
 

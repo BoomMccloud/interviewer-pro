@@ -5,6 +5,7 @@ import { type QuestionSegment } from '~/types';
 import { api } from '~/trpc/react';
 import Spinner from '~/components/UI/Spinner';
 import InitialFeedbackDisplay from './InitialFeedbackDisplay';
+import FormattedStarAnswer from './FormattedStarAnswer';
 
 interface QuestionFeedbackSectionProps {
   segment: QuestionSegment;
@@ -55,7 +56,7 @@ export default function QuestionFeedbackSection({ segment, sessionId }: Question
             <div>
               <h4 className="font-semibold text-gray-800 dark:text-gray-200">Example Answer:</h4>
               <div className="prose prose-sm mt-2 max-w-none rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800 dark:prose-invert">
-                <p>{initialFeedback.suggestedAnswer}</p>
+                <FormattedStarAnswer text={initialFeedback.suggestedAnswer} />
               </div>
             </div>
           </div>
