@@ -124,7 +124,7 @@ export default function MvpJdResumeInputForm({
           value={jdText}
           onChange={(e) => setJdText(e.target.value)}
           placeholder="Paste the job description here..."
-          className="w-full h-32 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical"
+          className="w-full h-32 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical dark:bg-slate-700 dark:text-gray-200 dark:border-gray-600 dark:placeholder-gray-400"
           disabled={isSaving || isStartingSession}
         />
       </div>
@@ -138,7 +138,7 @@ export default function MvpJdResumeInputForm({
           value={resumeText}
           onChange={(e) => setResumeText(e.target.value)}
           placeholder="Paste your resume here..."
-          className="w-full h-32 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical"
+          className="w-full h-32 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical dark:bg-slate-700 dark:text-gray-200 dark:border-gray-600 dark:placeholder-gray-400"
           disabled={isSaving || isStartingSession}
         />
       </div>
