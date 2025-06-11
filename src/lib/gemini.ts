@@ -248,42 +248,192 @@ export async function getFirstQuestion(
  * Generates a high-level assessment of an interview session using the LLM.
  * This is intended for the report page.
  * @param {JdResumeText} jdResumeText - The JD and Resume text.
- * @param {Persona} persona - The interviewer persona.
- * @param {QuestionSegment[]} questionSegments - The full conversational history.
- * @returns {Promise<OverallAssessment>} - The structured assessment from the AI.
+ * @param {Persona} persona - The persona of the interviewer.
+ * @param {QuestionSegment[]} questionSegments - The full conversation history.
+ * @returns {Promise<OverallAssessment>} A promise that resolves to the structured assessment.
  */
 export async function getOverallAssessmentFromLLM(
   jdResumeText: JdResumeText,
   persona: Persona,
   questionSegments: QuestionSegment[],
 ): Promise<OverallAssessment> {
-    // For now, we'll just return a mock object.
-    // In the future, this will build a prompt and call the Gemini API.
-    console.log('Called mock getOverallAssessmentFromLLM');
-    return Promise.resolve({
-        overallFit: [
-            { competency: 'Example Competency', assessment: 'Good', score: 8 },
-        ]
-    });
+    console.log("Generating overall assessment from LLM...");
+
+    const conversationHistory = questionSegments.map(q => 
+        `Question: ${q.question}\n${q.conversation.map(t => `${t.role}: ${t.content}`).join('\n')}`
+    ).join('\n\n');
+
+    const prompt = `
+        As a senior hiring manager reviewing an interview transcript, provide a comprehensive assessment.
+        
+        **Role of the Interviewer:** ${persona.name} (${persona.systemPrompt})
+        **Job Description:**\n${jdResumeText.jdText}
+        **Candidate's Resume:**\n${jdResumeText.resumeText}
+
+        **Full Interview Transcript:**
+        ${conversationHistory}
+
+        Based on the transcript, JD, and resume, provide the following in a structured format:
+        
+        <SUMMARY>
+        A 2-3 sentence high-level summary of the candidate's performance.
+        </SUMMARY>
+
+        <STRENGTHS>
+        - Point 1
+        - Point 2
+        - Point 3
+        </STRENGTHS>
+
+        <IMPROVEMENTS>
+        - Point 1
+        - Point 2
+        - Point 3
+        </IMPROVEMENTS>
+
+        <SCORE>
+        A single integer score from 1 to 10.
+        </SCORE>
+    `;
+
+    try {
+        const resultStream = await genAI.models.generateContentStream({
+            model: MODEL_NAME_TEXT,
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+                temperature: 0.5,
+                maxOutputTokens: 1500,
+            }
+        });
+
+        const responseText = await processStream(resultStream);
+
+        const summary = /<SUMMARY>(.*?)<\/SUMMARY>/s.exec(responseText)?.[1]?.trim() ?? "Summary not available.";
+        const strengths = /<STRENGTHS>(.*?)<\/STRENGTHS>/s.exec(responseText)?.[1]?.trim().split('\n').map(s => s.replace(/^- /, '')) ?? [];
+        const improvements = /<IMPROVEMENTS>(.*?)<\/IMPROVEMENTS>/s.exec(responseText)?.[1]?.trim().split('\n').map(s => s.replace(/^- /, '')) ?? [];
+        const scoreStr = /<SCORE>(.*?)<\/SCORE>/s.exec(responseText)?.[1]?.trim();
+        const score = scoreStr ? parseInt(scoreStr, 10) : 5;
+
+        return { summary, strengths, improvements, score };
+
+    } catch (error) {
+        console.error('Error getting overall assessment from LLM:', error);
+        return {
+            summary: "Could not generate assessment due to an error.",
+            strengths: [],
+            improvements: [],
+            score: 0,
+        };
+    }
 }
 
+/**
+ * Generates specific feedback for a single question and answer exchange.
+ * @param {QuestionSegment} question - The specific question segment to analyze.
+ * @returns {Promise<{ contentFeedback: string; clarityFeedback: string; confidenceFeedback: string; }>} Feedback object.
+ */
 export async function getQuestionFeedbackFromLLM(
     question: QuestionSegment
 ): Promise<{ contentFeedback: string; clarityFeedback: string; confidenceFeedback: string; }> {
-    console.log('Called mock getQuestionFeedbackFromLLM');
-    return Promise.resolve({
-        contentFeedback: 'Content was relevant.',
-        clarityFeedback: 'Clarity was good.',
-        confidenceFeedback: 'Appeared confident.',
-    });
+    console.log(`Generating feedback for question: "${question.question}"`);
+
+    const conversationTranscript = question.conversation.map(t => `${t.role}: ${t.content}`).join('\n');
+
+    const prompt = `
+        As an interview coach, analyze the following exchange and provide targeted feedback.
+
+        **The Question Asked:**
+        ${question.question}
+
+        **Key points the interviewer was looking for:**
+        ${question.keyPoints.join('\n- ')}
+
+        **The Candidate's Response(s):**
+        ${conversationTranscript}
+
+        Provide feedback based *only* on the candidate's response to this specific question.
+        
+        <CONTENT_FEEDBACK>
+        Critique the substance of the answer. Did they address the key points? Was it relevant?
+        </CONTENT_FEEDBACK>
+
+        <CLARITY_FEEDBACK>
+        Comment on the clarity and structure of their communication. Was it easy to follow?
+        </CLARITY_FEEDBACK>
+
+        <CONFIDENCE_FEEDBACK>
+        Assess the perceived confidence in their response. Did they sound knowledgeable?
+        </CONFIDENCE_FEEDBACK>
+    `;
+
+    try {
+        const resultStream = await genAI.models.generateContentStream({
+            model: MODEL_NAME_TEXT,
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+                temperature: 0.6,
+                maxOutputTokens: 1000,
+            }
+        });
+
+        const responseText = await processStream(resultStream);
+
+        const contentFeedback = /<CONTENT_FEEDBACK>(.*?)<\/CONTENT_FEEDBACK>/s.exec(responseText)?.[1]?.trim() ?? "N/A";
+        const clarityFeedback = /<CLARITY_FEEDBACK>(.*?)<\/CLARITY_FEEDBACK>/s.exec(responseText)?.[1]?.trim() ?? "N/A";
+        const confidenceFeedback = /<CONFIDENCE_FEEDBACK>(.*?)<\/CONFIDENCE_FEEDBACK>/s.exec(responseText)?.[1]?.trim() ?? "N/A";
+
+        return { contentFeedback, clarityFeedback, confidenceFeedback };
+    } catch (error) {
+        console.error('Error getting question feedback from LLM:', error);
+        return {
+            contentFeedback: "Error generating feedback.",
+            clarityFeedback: "Error generating feedback.",
+            confidenceFeedback: "Error generating feedback."
+        };
+    }
 }
 
+/**
+ * Generates a response from the AI coach in a feedback conversation.
+ * @param history The history of the coaching conversation.
+ * @returns A promise that resolves to the AI's chat response.
+ */
 export async function getChatResponse(
     history: { role: 'user' | 'ai', content: string }[]
 ): Promise<string> {
-    console.log('Called mock getChatResponse');
-    return Promise.resolve('You could try focusing on the STAR method.');
+    console.log("Generating chat response from coach...");
+
+    const prompt = `
+        You are an encouraging and helpful interview coach.
+        A user is asking for advice about one of their previous interview answers.
+        Your goal is to provide specific, constructive, and actionable advice.
+        Keep your responses concise and conversational (2-4 sentences).
+        
+        **Conversation so far:**
+        ${history.map(h => `${h.role}: ${h.content}`).join('\n')}
+
+        Based on the last user message, provide a helpful and encouraging response.
+    `;
+
+    try {
+        const resultStream = await genAI.models.generateContentStream({
+            model: MODEL_NAME_TEXT,
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+                temperature: 0.8,
+                maxOutputTokens: 300,
+            }
+        });
+
+        return await processStream(resultStream);
+    } catch (error) {
+        console.error('Error getting chat response from LLM:', error);
+        return "I'm sorry, I encountered an error and can't provide a response right now.";
+    }
 }
+
+// Alias for backwards compatibility with the report router
+export const getQuestionInitialFeedback = getQuestionFeedbackFromLLM;
 
 // ==============================================
 // INTERNAL HELPER FUNCTIONS

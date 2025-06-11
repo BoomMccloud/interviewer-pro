@@ -394,7 +394,7 @@ export const zodActiveSessionData = z.object({
   totalQuestions: z.number().int(),
   timeRemaining: z.number().int(),
   conversationHistory: z.array(zodConversationTurn),
-  questionSegments: z.array(z.any()), // This gets replaced below
+  questionSegments: z.array(zodQuestionSegment),
   currentQuestionIndex: z.number().int(),
   canProceedToNextTopic: z.boolean(),
   startTime: z.date(),
@@ -471,8 +471,12 @@ export const zodFeedbackConversationHistory = z.array(z.object({
     content: z.string(),
 }));
 
-export interface OverallAssessment {
-    overallFit: { competency: string; assessment: string; score: number }[];
-}
+export type OverallAssessment = z.infer<typeof zodOverallAssessment>;
+export const zodOverallAssessment = z.object({
+  summary: z.string(),
+  strengths: z.array(z.string()),
+  improvements: z.array(z.string()),
+  score: z.number(),
+});
 
 // ===================================================================
