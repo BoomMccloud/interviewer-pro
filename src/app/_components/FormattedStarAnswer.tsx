@@ -33,14 +33,17 @@ export default function FormattedStarAnswer({ text }: FormattedStarAnswerProps) 
   }
 
   return (
-    <p>
+    <p className="text-gray-800 dark:text-gray-200">
       {parts.map((part, index) => {
         const markerClass = getMarkerClass(part);
         if (markerClass) {
           return (
-            <span key={index} className={markerClass}>
-              {' '}{part}{' '}
-            </span>
+            <React.Fragment key={index}>
+              <br />
+              <span className={markerClass}>
+                {part}
+              </span>
+            </React.Fragment>
           );
         }
         return <React.Fragment key={index}>{part}</React.Fragment>;

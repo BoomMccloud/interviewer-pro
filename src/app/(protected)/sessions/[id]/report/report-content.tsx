@@ -66,7 +66,7 @@ export default function SessionReportContent() {
   const questionSegments = zodQuestionSegmentArray.safeParse(sessionData.questionSegments);
 
   return (
-    <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
+    <div className="mx-auto max-w-4xl bg-white p-4 dark:bg-slate-900 sm:p-6 lg:p-8">
       <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">
         Interview Report
       </h1>
