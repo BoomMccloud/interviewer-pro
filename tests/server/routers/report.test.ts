@@ -26,8 +26,9 @@ const mockedAuth = actualAuth as jest.MockedFunction<typeof actualAuth>;
 
 jest.mock('~/lib/gemini', () => ({
   __esModule: true,
-  // We'll add mocks for the specific report-generation LLM calls here
   getOverallAssessmentFromLLM: jest.fn(),
+  getQuestionFeedbackFromLLM: jest.fn(),
+  getChatResponse: jest.fn(),
 }));
 
 jest.mock('~/lib/personaService', () => ({
@@ -35,10 +36,12 @@ jest.mock('~/lib/personaService', () => ({
     getPersona: jest.fn(),
 }));
 
-import { getOverallAssessmentFromLLM } from '~/lib/gemini';
+import { getOverallAssessmentFromLLM, getQuestionFeedbackFromLLM, getChatResponse } from '~/lib/gemini';
 import { getPersona } from '~/lib/personaService';
 
 const mockGetOverallAssessmentFromLLMFn = getOverallAssessmentFromLLM as jest.MockedFunction<typeof getOverallAssessmentFromLLM>;
+const mockGetQuestionFeedbackFromLLMFn = getQuestionFeedbackFromLLM as jest.MockedFunction<typeof getQuestionFeedbackFromLLM>;
+const mockGetChatResponseFn = getChatResponse as jest.MockedFunction<typeof getChatResponse>;
 const mockGetPersonaFn = getPersona as jest.MockedFunction<typeof getPersona>;
 
 
@@ -81,6 +84,8 @@ describe('Report tRPC Router', () => {
 
     beforeEach(async () => {
         mockGetOverallAssessmentFromLLMFn.mockReset();
+        mockGetQuestionFeedbackFromLLMFn.mockReset();
+        mockGetChatResponseFn.mockReset();
         mockGetPersonaFn.mockReset();
         (mockedAuth as jest.Mock).mockReset();
 
@@ -181,14 +186,14 @@ describe('Report tRPC Router', () => {
                 confidenceFeedback: 'Appeared confident.',
             };
             // Assume a new LLM function for this, and mock it
-            // mockGetQuestionFeedbackFromLLM.mockResolvedValue(mockFeedback);
+            mockGetQuestionFeedbackFromLLMFn.mockResolvedValue(mockFeedback);
 
             // Act
             const result = await caller.report.getQuestionInitialFeedback({ sessionId: session.id, questionId });
 
             // Assert
             expect(result).toEqual(mockFeedback);
-            // expect(mockGetQuestionFeedbackFromLLM).toHaveBeenCalledTimes(1);
+            expect(mockGetQuestionFeedbackFromLLMFn).toHaveBeenCalledTimes(1);
         });
 
         it('should throw NOT_FOUND if the questionId does not exist in the session', async () => {
@@ -199,6 +204,83 @@ describe('Report tRPC Router', () => {
             await expect(
                 caller.report.getQuestionInitialFeedback({ sessionId: session.id, questionId: 'non-existent-q' })
             ).rejects.toThrowError(/Question not found in session/);
+        });
+    });
+
+    describe('startOrGetFeedbackConversation procedure', () => {
+        const input = { sessionId: '', questionId: 'q1_opening' };
+
+        beforeEach(() => {
+            input.sessionId = session.id;
+        });
+
+        it('should create and return a new feedback conversation if one does not exist', async () => {
+            // Arrange
+            const caller = await getTestCaller(user);
+
+            // Act
+            const result = await caller.report.startOrGetFeedbackConversation(input);
+
+            // Assert
+            expect(result.history).toHaveLength(0);
+            expect(result.questionId).toBe(input.questionId);
+
+            // Verify it was created in the DB
+            const dbConversation = await db.feedbackConversation.findUnique({ where: { id: result.id } });
+            expect(dbConversation).not.toBeNull();
+        });
+
+        it('should retrieve and return an existing feedback conversation', async () => {
+            // Arrange
+            const caller = await getTestCaller(user);
+            const existingConversation = await db.feedbackConversation.create({
+                data: {
+                    userId: user.id,
+                    sessionDataId: session.id,
+                    questionId: input.questionId,
+                    history: [{ role: 'user', content: 'hello' }],
+                }
+            });
+
+            // Act
+            const result = await caller.report.startOrGetFeedbackConversation(input);
+
+            // Assert
+            expect(result.id).toBe(existingConversation.id);
+            expect(result.history).toHaveLength(1);
+        });
+    });
+
+    describe('postToFeedbackConversation procedure', () => {
+        let conversationId: string;
+
+        beforeEach(async () => {
+            const conversation = await db.feedbackConversation.create({
+                data: {
+                    userId: user.id,
+                    sessionDataId: session.id,
+                    questionId: 'q1_opening',
+                    history: [],
+                }
+            });
+            conversationId = conversation.id;
+        });
+
+        it('should add a user message, get a response, and return the updated conversation', async () => {
+            // Arrange
+            const caller = await getTestCaller(user);
+            const userMessage = 'How can I improve my answer?';
+            const aiResponse = 'You could try focusing on the STAR method.';
+            // Assume a new LLM function for this chat interaction
+            mockGetChatResponseFn.mockResolvedValue(aiResponse);
+
+            // Act
+            const result = await caller.report.postToFeedbackConversation({ conversationId, message: userMessage });
+
+            // Assert
+            expect(result.history).toHaveLength(2);
+            expect(result.history[0]).toEqual({ role: 'user', content: userMessage });
+            expect(result.history[1]).toEqual({ role: 'ai', content: aiResponse });
         });
     });
 });

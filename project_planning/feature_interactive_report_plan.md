@@ -87,7 +87,7 @@ We will create a new router, `report.ts`, or add to the existing `session.ts` ro
 
 We will follow the testing pyramid and strategies from `tdd_methodology.md`.
 
-**3.1. Phase 1: Backend tRPC Procedures (Integration & Unit Tests)**
+**3.1. Phase 1: Backend tRPC Procedures (Integration & Unit Tests) - ✅ Complete**
 
 *   **Testing Strategy:** Backend integration tests using a **real database** and a **mocked LLM service** (`~/lib/gemini`). This ensures our database logic is correct without incurring AI costs during tests.
 

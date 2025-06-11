@@ -466,6 +466,11 @@ export interface FeedbackConversation {
   updatedAt: Date;
 }
 
+export const zodFeedbackConversationHistory = z.array(z.object({
+    role: z.enum(['user', 'ai']),
+    content: z.string(),
+}));
+
 export interface OverallAssessment {
     overallFit: { competency: string; assessment: string; score: number }[];
 }

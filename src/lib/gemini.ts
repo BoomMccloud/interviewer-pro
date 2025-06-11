@@ -267,6 +267,28 @@ export async function getOverallAssessmentFromLLM(
     });
 }
 
+export async function getQuestionFeedbackFromLLM(
+    question: QuestionSegment
+): Promise<{ contentFeedback: string; clarityFeedback: string; confidenceFeedback: string; }> {
+    console.log('Called mock getQuestionFeedbackFromLLM');
+    return Promise.resolve({
+        contentFeedback: 'Content was relevant.',
+        clarityFeedback: 'Clarity was good.',
+        confidenceFeedback: 'Appeared confident.',
+    });
+}
+
+export async function getChatResponse(
+    history: { role: 'user' | 'ai', content: string }[]
+): Promise<string> {
+    console.log('Called mock getChatResponse');
+    return Promise.resolve('You could try focusing on the STAR method.');
+}
+
+// ==============================================
+// INTERNAL HELPER FUNCTIONS
+// ==============================================
+
 // ==============================================
 // Phase 3A: Live Interview Functions (TDD)
 // ==============================================
