@@ -11,7 +11,7 @@
  */
 
 import React from 'react';
-import { SessionReportContent } from './report-content';
+import SessionReportContent from './report-content';
 
 interface SessionReportPageProps {
   params: Promise<{
@@ -22,5 +22,5 @@ interface SessionReportPageProps {
 export default async function SessionReportPage({ params }: SessionReportPageProps) {
   const { id: sessionId } = await params;
 
-  return <SessionReportContent sessionId={sessionId} />;
+  return <SessionReportContent />;
 } 

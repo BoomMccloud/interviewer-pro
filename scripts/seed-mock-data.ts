@@ -1,9 +1,16 @@
 /**
  * Seed script to populate database with mock JD/Resume data for development
  * Run with: npx tsx scripts/seed-mock-data.ts
+ * 
+ * This script is idempotent. It will find or create a specific test user,
+ * clean up any existing data for that user, and then seed fresh mock data,
+ * including a completed interview session ready for report testing.
  */
 
 import { db } from '~/server/db';
+import { type QuestionSegment } from '~/types';
+import { Prisma } from '@prisma/client';
+import { MOCK_USER_ID, MOCK_USER_EMAIL, MOCK_USER_NAME } from '~/lib/test-auth-utils';
 
 const MOCK_JD_TEXT = `Software Engineer - Full Stack Developer
 
@@ -107,48 +114,90 @@ async function seedMockData() {
   try {
     console.log('🌱 Starting to seed mock data...');
 
-    // First, check if there's already a user to associate the data with
-    const existingUser = await db.user.findFirst();
-    
-    if (!existingUser) {
-      console.log('❌ No users found in database. Please sign in first to create a user account.');
-      console.log('💡 After signing in, run this script again to seed mock data.');
-      return;
-    }
-
-    console.log(`✅ Found user: ${existingUser.email ?? existingUser.name ?? existingUser.id}`);
-
-    // Check if this user already has JD/Resume data
-    const existingJdResume = await db.jdResumeText.findFirst({
-      where: { userId: existingUser.id }
+    // 1. Find or create the mock user
+    const user = await db.user.upsert({
+      where: { email: MOCK_USER_EMAIL },
+      update: {
+        id: MOCK_USER_ID,
+        name: MOCK_USER_NAME,
+      },
+      create: {
+        id: MOCK_USER_ID,
+        email: MOCK_USER_EMAIL,
+        name: MOCK_USER_NAME,
+      },
     });
 
-    if (existingJdResume) {
-      console.log('📄 User already has JD/Resume data:');
-      console.log(`   - JD Text: ${existingJdResume.jdText.substring(0, 50)}...`);
-      console.log(`   - Resume Text: ${existingJdResume.resumeText.substring(0, 50)}...`);
-      console.log('');
-      console.log('🤔 Do you want to replace the existing data? (This will also delete associated sessions)');
-      console.log('   To proceed, delete the existing data manually or modify this script.');
-      return;
-    }
+    console.log(`✅ Using user: ${user.email} (ID: ${user.id})`);
 
-    // Create mock JD/Resume data
+    // 2. Clean up ALL existing interview-related data to ensure a clean slate
+    console.log('🧹 Cleaning up old interview data...');
+    await db.feedbackConversation.deleteMany({});
+    await db.sessionData.deleteMany({});
+    await db.jdResumeText.deleteMany({});
+    console.log('🧼 Old data cleaned.');
+
+
+    // 3. Create mock JD/Resume data
+    console.log('📄 Creating new JD/Resume text...');
     const mockJdResume = await db.jdResumeText.create({
       data: {
-        userId: existingUser.id,
+        userId: user.id,
         jdText: MOCK_JD_TEXT,
         resumeText: MOCK_RESUME_TEXT,
       }
     });
+    console.log(`✅ JD/Resume text created (ID: ${mockJdResume.id})`);
 
-    console.log('✅ Successfully created mock JD/Resume data!');
-    console.log(`   - JD/Resume ID: ${mockJdResume.id}`);
-    console.log(`   - Created at: ${mockJdResume.createdAt.toISOString()}`);
+    // 4. Create a mock completed session
+    console.log('🎙️ Creating mock completed interview session...');
+    const mockQuestionSegments: QuestionSegment[] = [
+      {
+        questionId: 'q1_opening',
+        questionNumber: 1,
+        questionType: 'opening',
+        question: 'Tell me about a time you had to learn a new technology quickly.',
+        keyPoints: ['Be specific', 'Mention the outcome'],
+        startTime: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+        endTime: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
+        conversation: [
+          { role: 'ai', content: 'Tell me about a time you had to learn a new technology quickly.', timestamp: new Date().toISOString(), messageType: 'question' },
+          { role: 'user', content: 'I had to learn Vue.js for a project with a tight deadline. I focused on the core concepts and was able to contribute to the project within a week.', timestamp: new Date().toISOString(), messageType: 'response' },
+        ],
+      },
+      {
+        questionId: 'q2_technical',
+        questionNumber: 2,
+        questionType: 'technical',
+        question: 'How would you optimize a slow database query?',
+        keyPoints: ['Indexing', 'Query analysis', 'Caching'],
+        startTime: new Date(Date.now() - 7 * 60 * 1000).toISOString(),
+        endTime: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+        conversation: [
+          { role: 'ai', content: 'How would you optimize a slow database query?', timestamp: new Date().toISOString(), messageType: 'question' },
+          { role: 'user', content: 'I would first analyze the query execution plan to identify bottlenecks. Then I would check for missing indexes and consider caching strategies for frequently accessed data.', timestamp: new Date().toISOString(), messageType: 'response' },
+        ],
+      },
+    ];
+
+    const mockSession = await db.sessionData.create({
+      data: {
+        userId: user.id,
+        jdResumeTextId: mockJdResume.id,
+        personaId: 'swe-interviewer-standard',
+        durationInSeconds: 10 * 60, // 10 minutes
+        startTime: new Date(Date.now() - 10 * 60 * 1000),
+        endTime: new Date(),
+        questionSegments: mockQuestionSegments as unknown as Prisma.InputJsonValue,
+        currentQuestionIndex: mockQuestionSegments.length - 1,
+      }
+    });
+    console.log(`✅ Mock session created (ID: ${mockSession.id})`);
+
     console.log('');
     console.log('🎉 Mock data seeded successfully!');
     console.log('💡 You can now test the application with pre-populated data.');
-    console.log('🚀 Visit /dashboard to see the mock data in action.');
+    console.log(`🚀 Visit /sessions/${mockSession.id}/report to see the report for the mock session.`);
 
   } catch (error) {
     console.error('❌ Error seeding mock data:', error);

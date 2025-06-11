@@ -6,35 +6,30 @@
 
 import 'dotenv/config';
 import { db } from '../src/server/db.js';
+import { MOCK_USER_ID, MOCK_USER_EMAIL, MOCK_USER_NAME } from '../src/lib/test-auth-utils.js';
 
 async function createDevSession() {
   try {
-    // Use the development user ID that matches auth bypass
-    const DEV_USER_ID = 'dev-user-123';
-    
-    // Check if the dev user exists, create if not
-    let user = await db.user.findUnique({
-      where: { id: DEV_USER_ID }
+    // Use the development user that matches auth bypass
+    console.log(`🔧 Ensuring dev user (${MOCK_USER_EMAIL}) exists...`);
+    const user = await db.user.upsert({
+      where: { email: MOCK_USER_EMAIL },
+      update: {
+        id: MOCK_USER_ID,
+        name: MOCK_USER_NAME,
+      },
+      create: {
+        id: MOCK_USER_ID,
+        email: MOCK_USER_EMAIL,
+        name: MOCK_USER_NAME,
+      },
     });
-    
-    if (!user) {
-      console.log('🔧 Creating dev user to match auth bypass...');
-      user = await db.user.create({
-        data: {
-          id: DEV_USER_ID,
-          email: 'dev@example.com',
-          name: 'Dev User',
-        }
-      });
-      console.log('✅ Created dev user:', user.id);
-    } else {
-      console.log('✅ Found dev user:', user.id);
-    }
+    console.log('✅ Found/Created dev user:', user.id);
 
     // Check existing sessions
     console.log('\n🔍 Checking existing sessions...');
     const existingSessions = await db.sessionData.findMany({
-      where: { userId: DEV_USER_ID },
+      where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
       take: 5,
       include: {
@@ -89,7 +84,7 @@ async function createDevSession() {
     
     console.log('\n✅ Created new test session!');
     console.log('🔗 Session URL: http://localhost:3000/sessions/' + testSession.id);
-    console.log('💡 This session matches the DEV_BYPASS_AUTH user ID (dev-user-123)');
+    console.log(`💡 This session matches the DEV_BYPASS_AUTH user (${MOCK_USER_EMAIL})`);
     
   } catch (error) {
     console.error('❌ Error:', error);

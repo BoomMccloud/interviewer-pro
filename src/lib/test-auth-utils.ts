@@ -7,6 +7,12 @@
 
 import { auth as realAuth } from '~/lib/auth'; // Import the real auth handler
 import { type Session } from 'next-auth';
+import { db } from '~/server/db';
+
+// Define a static mock user object for development and seeding
+export const MOCK_USER_ID = 'test-user-for-interviewer-pro';
+export const MOCK_USER_EMAIL = 'test-user@interviewer.pro';
+export const MOCK_USER_NAME = 'Mock Test User';
 
 // Define a static mock session object for E2E tests
 const mockE2eSession: Session = {
@@ -22,9 +28,9 @@ const mockE2eSession: Session = {
 // Define a development user session for quick testing
 const mockDevSession: Session = {
   user: {
-    id: 'dev-user-123',
-    name: 'Dev User',
-    email: 'dev@example.com',
+    id: MOCK_USER_ID,
+    name: MOCK_USER_NAME,
+    email: MOCK_USER_EMAIL,
     image: null,
   },
   expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),

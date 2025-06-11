@@ -8,187 +8,80 @@
  */
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { api } from '~/trpc/react';
 import Spinner from '~/components/UI/Spinner';
 import SessionOverview from '~/components/Sessions/SessionOverview';
 import SessionTimeline from '~/components/Sessions/SessionTimeline';
 import SessionAnalytics from '~/components/Sessions/SessionAnalytics';
 import SessionFeedback from '~/components/Sessions/SessionFeedback';
+import OverallAssessment from '~/app/_components/OverallAssessment';
+import { useMemo } from 'react';
+import { zodQuestionSegmentArray, type QuestionSegment } from '~/types';
+import QuestionFeedbackSection from '~/app/_components/QuestionFeedbackSection';
 
-interface SessionReportContentProps {
-  sessionId: string;
-}
-
-export function SessionReportContent({ sessionId }: SessionReportContentProps) {
+/**
+ * Main container for the session report page.
+ * It fetches the overall assessment and will orchestrate the display of different report sections.
+ */
+export default function SessionReportContent() {
+  const params = useParams<{ id: string }>();
   const router = useRouter();
 
-  // Fetch session data using our new tRPC procedures
-  const { 
-    data: sessionReport, 
-    isLoading: reportLoading, 
-    error: reportError 
-  } = api.session.getSessionReport.useQuery({ sessionId });
+  const {
+    data: assessmentData,
+    isLoading: assessmentLoading,
+    error: assessmentError,
+  } = api.report.getOverallAssessment.useQuery({ sessionId: params.id });
 
-  const { 
-    data: sessionAnalytics, 
-    isLoading: analyticsLoading, 
-    error: analyticsError 
-  } = api.session.getSessionAnalytics.useQuery({ sessionId });
+  const {
+    data: sessionData,
+    isLoading: sessionLoading,
+    error: sessionError,
+  } = api.session.getSessionById.useQuery({ sessionId: params.id });
 
-  const { 
-    data: sessionFeedback, 
-    isLoading: feedbackLoading, 
-    error: feedbackError 
-  } = api.session.getSessionFeedback.useQuery({ sessionId });
-
-  // Mutation to create a new session for retake
-  const createSessionMutation = api.session.createSession.useMutation({
-    onSuccess: (newSession) => {
-      // Navigate to the new session
-      router.push(`/sessions/${newSession.sessionId}`);
-    },
-    onError: (error) => {
-      console.error('Failed to create retake session:', error);
-      alert('Failed to create new session. Please try again.');
-    }
-  });
-
-  const handleRetakeInterview = async () => {
-    if (!sessionReport) {
-      alert('Session data not available for retake.');
-      return;
-    }
-
-    try {
-      // Create a new session using the same persona and duration
-      await createSessionMutation.mutateAsync({
-        personaId: sessionReport.personaId,
-        durationInSeconds: sessionReport.durationInSeconds || 1800, // Default to 30 minutes
-      });
-    } catch (error) {
-      console.error('Error creating retake session:', error);
-    }
-  };
-
-  const handleExportReport = () => {
-    // TODO: Implement export functionality
-    alert('Export functionality will be implemented in a future update.');
-  };
-
-  // Show loading state
-  if (reportLoading || analyticsLoading || feedbackLoading) {
+  if (assessmentLoading || sessionLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <Spinner />
-        <p className="mt-4 text-gray-600">Loading session report...</p>
-      </div>
-    );
-  }
-
-  // Show error if main session report fails
-  if (reportError) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Error Loading Report</h1>
-          <p className="text-red-600 mb-4">{reportError.message}</p>
-          <button 
-            onClick={() => window.history.back()}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Go Back
-          </button>
+        <div className="flex h-screen items-center justify-center">
+            <Spinner />
         </div>
-      </div>
     );
   }
 
-  // Report loaded successfully
-  if (!sessionReport) {
+  const error = assessmentError ?? sessionError;
+  if (error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <p className="text-gray-600">Session report not found.</p>
-      </div>
+        <div className="flex h-screen flex-col items-center justify-center">
+            <h1 className="text-2xl font-bold text-red-600">Error loading report</h1>
+            <p className="mt-2 text-gray-600">{error.message}</p>
+        </div>
     );
   }
+
+  if (!assessmentData || !sessionData) {
+    return <div>No assessment data found.</div>;
+  }
+
+  // Safely parse the question segments
+  const questionSegments = zodQuestionSegmentArray.safeParse(sessionData.questionSegments);
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
-      {/* Page Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Session Report</h1>
-        <p className="text-gray-600">
-          Detailed analysis of your interview session performance
-        </p>
+    <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
+      <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">
+        Interview Report
+      </h1>
+      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+        Session ID: {params.id}
+      </p>
+
+      <div className="mt-8">
+        <OverallAssessment assessmentData={assessmentData} />
       </div>
 
-      {/* Session Overview Section */}
-      <div className="mb-8">
-        <SessionOverview report={sessionReport} />
-      </div>
-
-      {/* Session Timeline Section */}
-      <div className="mb-8">
-        <SessionTimeline history={sessionReport.history} />
-      </div>
-
-      {/* Analytics Section */}
-      <div className="mb-8">
-        {sessionAnalytics ? (
-          <SessionAnalytics analytics={sessionAnalytics} />
-        ) : analyticsError ? (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-yellow-800 mb-2">Analytics Unavailable</h3>
-            <p className="text-yellow-700">{analyticsError.message}</p>
-          </div>
-        ) : (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="text-gray-600">Loading analytics...</p>
-          </div>
-        )}
-      </div>
-
-      {/* Feedback Section */}
-      <div className="mb-8">
-        {sessionFeedback ? (
-          <SessionFeedback feedback={sessionFeedback} />
-        ) : feedbackError ? (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-yellow-800 mb-2">Feedback Unavailable</h3>
-            <p className="text-yellow-700">{feedbackError.message}</p>
-          </div>
-        ) : (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="text-gray-600">Loading feedback...</p>
-          </div>
-        )}
-      </div>
-
-      {/* Navigation */}
-      <div className="flex justify-between items-center pt-8 border-t border-gray-200">
-        <button 
-          onClick={() => window.history.back()}
-          className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
-        >
-          ← Back to Sessions
-        </button>
-        
-        <div className="space-x-2">
-          <button 
-            onClick={handleExportReport}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-          >
-            Export Report
-          </button>
-          <button 
-            onClick={handleRetakeInterview}
-            disabled={createSessionMutation.isPending}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {createSessionMutation.isPending ? 'Creating...' : 'Retake Interview'}
-          </button>
-        </div>
+      <div className="mt-10 space-y-8">
+        {questionSegments.success && questionSegments.data.map((segment) => (
+          <QuestionFeedbackSection key={segment.questionId} segment={segment} sessionId={params.id} />
+        ))}
       </div>
     </div>
   );
