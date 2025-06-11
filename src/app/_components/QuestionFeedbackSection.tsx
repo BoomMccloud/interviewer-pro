@@ -5,6 +5,7 @@ import { type QuestionSegment } from '~/types';
 import { api } from '~/trpc/react';
 import Spinner from '~/components/UI/Spinner';
 import InteractiveCoach from './InteractiveCoach';
+import InitialFeedbackDisplay from './InitialFeedbackDisplay';
 
 interface QuestionFeedbackSectionProps {
   segment: QuestionSegment;
@@ -51,11 +52,10 @@ export default function QuestionFeedbackSection({ segment, sessionId }: Question
           <p className="text-red-600">{error.message}</p>
         ) : initialFeedback ? (
           <div>
-            <h4 className="font-semibold">Initial Feedback:</h4>
-            <pre className="mt-2 rounded-lg bg-gray-100 p-4 dark:bg-gray-800">
-              {JSON.stringify(initialFeedback, null, 2)}
-            </pre>
-            <InteractiveCoach sessionId={sessionId} questionId={segment.questionId} />
+            <InitialFeedbackDisplay feedback={initialFeedback} />
+            <div className="mt-4">
+              <InteractiveCoach sessionId={sessionId} questionId={segment.questionId} />
+            </div>
           </div>
         ) : null}
       </div>

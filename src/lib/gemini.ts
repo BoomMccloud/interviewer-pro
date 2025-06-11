@@ -351,8 +351,11 @@ export async function getQuestionFeedbackFromLLM(
         **The Candidate's Response(s):**
         ${conversationTranscript}
 
+        ---
+        **INSTRUCTIONS**
         Provide feedback based *only* on the candidate's response to this specific question.
-        
+        You MUST respond in the following format. Do not add any extra text or formatting outside of these tags.
+
         <CONTENT_FEEDBACK>
         Critique the substance of the answer. Did they address the key points? Was it relevant?
         </CONTENT_FEEDBACK>
