@@ -25,7 +25,7 @@ export default function RootLayout({
         <ThemeProvider>
           <ThemeToggleButton />
           <TRPCReactProvider>
-            <main className="bg-white dark:bg-slate-900">{children}</main>
+            <main className="min-h-screen bg-white dark:bg-slate-900">{children}</main>
           </TRPCReactProvider>
         </ThemeProvider>
       </body>
