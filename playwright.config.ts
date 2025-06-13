@@ -6,13 +6,14 @@ import { defineConfig, devices } from '@playwright/test';
  */
 // require('dotenv').config();
 
+// The path to the file that will store the authentication state.
+export const STORAGE_STATE = 'tests/e2e/storageState.json';
+
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig({
   testDir: './tests/e2e',
-  /* Run tests in files in tests/e2e directory only */
-  testMatch: 'tests/e2e/**/*.spec.ts',
   /* Maximum time out one test can run for. */
   timeout: 30 * 1000,
   /* Expect while waiting for an assertion to pass. */
@@ -30,13 +31,16 @@ export default defineConfig({
   /* Reporter to use. See https://playwright.dev/docs/reporters */
   reporter: 'html',
 
-  /* Enables the global setup script */
-  globalSetup: './tests/e2e/global-setup.ts',
+  /* Enables the global setup script. */
+  globalSetup: './tests/e2e/global.setup.ts',
 
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: 'http://127.0.0.1:3000',
+    
+    /* Use the authentication state saved by the global setup */
+    storageState: STORAGE_STATE,
 
     /* Collect traces on failure. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',

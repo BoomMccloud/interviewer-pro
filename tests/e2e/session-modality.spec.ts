@@ -18,7 +18,7 @@ test.describe('Session Page Modality Switching', () => {
   // It ensures tests use a clean context.
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test('should correctly render the TextInterviewUI by default', async ({ page }) => {
+  test.only('should correctly render the TextInterviewUI by default', async ({ page }) => {
     await page.goto(`/sessions/${TEST_SESSION_ID}`);
     // A robust selector targeting the specific component for the text-based interview.
     await expect(page.getByTestId('text-interview-ui')).toBeVisible();

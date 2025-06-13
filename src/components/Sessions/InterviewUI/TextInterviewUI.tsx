@@ -113,7 +113,10 @@ export default function TextInterviewUI({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600">
+    <div
+      data-testid="text-interview-ui"
+      className="flex flex-col h-full bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600"
+    >
       {/* Current Question Section - Top */}
       <div className="flex-shrink-0 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-700 border-b border-gray-200 dark:border-gray-600 p-6">
         <div className="w-full flex gap-6">

@@ -796,42 +796,31 @@ export const sessionRouter = createTRPCRouter({
       };
     }),
 
-  // NEW: saveSession procedure for QuestionSegments structure
+  // NEW: saveSession procedure for saving progress or ending the session
   saveSession: protectedProcedure
     .input(z.object({
       sessionId: z.string(),
-      currentResponse: z.string().optional(),
-      endSession: z.boolean().optional().default(false)
+      endSession: z.boolean().optional().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
-      // Fetch session with validation
-      const session = await ctx.db.sessionData.findUnique({
-        where: { id: input.sessionId }
-      });
+      const { sessionId, endSession } = input;
 
-      if (!session || session.userId !== ctx.session.user.id) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
-      }
-
-      // Prepare update data
-      const updateData: { updatedAt: Date; endTime?: Date } = { 
-        updatedAt: new Date() 
+      const updateData: { endTime?: Date, updatedAt: Date } = {
+        updatedAt: new Date(),
       };
-      
-      // If ending session, set endTime to mark completion
-      if (input.endSession) {
+
+      if (endSession) {
         updateData.endTime = new Date();
       }
-      
+
       await ctx.db.sessionData.update({
-        where: { id: input.sessionId },
-        data: updateData
+        where: { id: sessionId, userId: ctx.session.user.id },
+        data: updateData,
       });
 
-      return { 
-        saved: true, 
-        ended: input.endSession || false,
-        timestamp: new Date() 
+      return {
+        saved: true,
+        ended: endSession,
       };
     }),
 });

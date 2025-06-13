@@ -25,6 +25,8 @@
     "test:backend": "jest -c jest.config.backend.js",
     "test:watch": "jest -c jest.config.frontend.js --watch",
     "test:backend:watch": "jest -c jest.config.backend.js --watch",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "test:all": "npm run test:frontend && npm run test:backend"
   },
   "dependencies": {
