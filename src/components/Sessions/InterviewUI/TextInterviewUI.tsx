@@ -28,7 +28,7 @@ interface TextInterviewUIProps {
     currentQuestion: string;
     keyPoints: string[];
     status: 'active' | 'paused' | 'completed';
-    startTime: Date;
+    startTime: Date | null;
     personaName?: string; // Name of the interviewer persona
   };
   userInput: string;
@@ -163,7 +163,7 @@ export default function TextInterviewUI({
 
           {/* Timer Container */}
           <div className="flex-shrink-0 flex items-center">
-            <Timer />
+            {sessionData.startTime && <Timer />}
           </div>
         </div>
       </div>

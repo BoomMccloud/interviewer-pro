@@ -54,7 +54,7 @@ async function generateQuestionForSession(
   }
 
   // Generate question using AI service
-  const questionResult = await getFirstQuestion(jdResumeText, persona);
+  const questionResult = await getFirstQuestion(jdResumeText, persona, []);
   
   // Modern approach: use AI response directly + fallback key points
   // The legacy parseAiResponse is deprecated for natural question generation
@@ -108,7 +108,8 @@ export const sessionRouter = createTRPCRouter({
         throw new Error("Persona not found.");
       }
 
-      const firstQuestionResponse = await getFirstQuestion(jdResumeRecord, persona);
+      // Pass empty array for initial questionSegments
+      const firstQuestionResponse = await getFirstQuestion(jdResumeRecord, persona, []);
 
       // Create first question segment immediately during session creation
       const firstQuestionSegment: QuestionSegment = {
@@ -424,8 +425,15 @@ export const sessionRouter = createTRPCRouter({
         });
       }
 
-      // Generate first question using AI service
-      const questionResult = await getFirstQuestion(session.jdResumeText, persona);
+      if (!session.jdResumeText) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'JD/Resume text not found for this session.',
+        });
+      }
+
+      // Generate first question using AI service, passing empty questionSegments
+      const questionResult = await getFirstQuestion(session.jdResumeText, persona, []);
       
       // Create first question segment
       const firstQuestionSegment: QuestionSegment = {
@@ -557,6 +565,7 @@ export const sessionRouter = createTRPCRouter({
           sessionId: input.sessionId,
           isActive: session.endTime === null,
           personaId: session.personaId,
+          startTime: session.startTime,
           currentQuestion: 'Interview not started yet. Please start the interview.',
           keyPoints: [],
           conversationHistory: [],
@@ -570,6 +579,7 @@ export const sessionRouter = createTRPCRouter({
         sessionId: input.sessionId,
         isActive: session.endTime === null, // endTime === null means active
         personaId: session.personaId,
+        startTime: session.startTime,
         currentQuestion: currentQuestion.question,
         keyPoints: currentQuestion.keyPoints,
         conversationHistory: currentQuestion.conversation,
@@ -596,8 +606,11 @@ export const sessionRouter = createTRPCRouter({
         include: { jdResumeText: true }
       });
 
-      if (!session || session.userId !== ctx.session.user.id) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+      if (!session || !session.jdResumeText) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session or required JD/Resume data not found' });
+      }
+      if (session.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authorized to access this session' });
       }
 
       // Parse question segments
@@ -674,8 +687,11 @@ export const sessionRouter = createTRPCRouter({
         include: { jdResumeText: true }
       });
 
-      if (!session || session.userId !== ctx.session.user.id) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+      if (!session || !session.jdResumeText) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session or required JD/Resume data not found' });
+      }
+      if (session.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authorized to access this session' });
       }
 
       const questionSegments = zodQuestionSegmentArray.parse(session.questionSegments);

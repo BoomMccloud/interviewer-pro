@@ -337,7 +337,7 @@ export interface ActiveSessionData {
   questionSegments: QuestionSegment[];      // NEW: All question segments
   currentQuestionIndex: number;             // NEW: Which question is active
   canProceedToNextTopic: boolean;           // NEW: Whether user can advance to next topic
-  startTime: Date;
+  startTime: Date | null;
   lastActivityTime: Date;
   endTime?: Date;
 }
@@ -397,7 +397,7 @@ export const zodActiveSessionData = z.object({
   questionSegments: z.array(zodQuestionSegment),
   currentQuestionIndex: z.number().int(),
   canProceedToNextTopic: z.boolean(),
-  startTime: z.date(),
+  startTime: z.date().nullable(),
   lastActivityTime: z.date(),
   endTime: z.date().optional(),
 });

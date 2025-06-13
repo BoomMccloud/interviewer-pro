@@ -400,41 +400,26 @@ export default function SessionPage() {
   if (sessionState === SESSION_STATES.ACTIVE && activeSession.data) {
     const renderInterviewMode = () => {
       const sessionData = activeSession.data;
-      
-      // Map current session data structure to new TextInterviewUI interface
-      const mappedSessionData = {
-        sessionId: sessionData.sessionId,
-        history: sessionData.conversationHistory.map((msg: { role: string; content: string; timestamp: string }) => {
-          // Fix role mapping bug and add explicit error handling
-          let mappedRole: 'ai' | 'user';
-          
-          if (msg.role === 'ai' || msg.role === 'model') {
-            mappedRole = 'ai';
-          } else if (msg.role === 'user') {
-            mappedRole = 'user';
-          } else {
-            // Fail fast instead of defaulting to prevent silent bugs
-            throw new Error(`Unexpected conversation role: '${msg.role}'. Expected 'ai', 'model', or 'user'. This indicates a backend/frontend role mapping inconsistency.`);
-          }
-          
-          return {
-            role: mappedRole,
-            content: msg.content,
+
+      // Pass sessionData directly to UI components
+      const componentProps = {
+        sessionData: {
+          ...sessionData,
+          startTime: sessionData.startTime ? new Date(sessionData.startTime) : null,
+          history: sessionData.conversationHistory.map(msg => ({
+            ...msg,
             timestamp: new Date(msg.timestamp),
-          };
-        }),
-        currentQuestion: sessionData.currentQuestion,
-        keyPoints: sessionData.keyPoints,
-        status: sessionData.isActive ? 'active' as const : 'completed' as const,
-        startTime: new Date(), // Default to current time for now
-        personaName: personaName, // Add persona name to session data
+          })),
+          status: sessionData.isActive ? 'active' as const : 'completed' as const,
+          personaName: personaName,
+        },
       };
-      
+
       switch (mode) {
         case INTERVIEW_MODES.TEXT:
           return (
             <TextInterviewUI
-              sessionData={mappedSessionData}
+              {...componentProps}
               userInput={userInput}
               setUserInput={setUserInput}
               onSubmitResponse={handleSendMessage}
@@ -453,7 +438,8 @@ export default function SessionPage() {
             <VoiceInterviewUI
               sessionData={{
                 ...sessionData,
-                timeRemaining: 900, // 15 minutes default, TODO: calculate actual remaining time
+                startTime: sessionData.startTime ? new Date(sessionData.startTime) : null,
+                timeRemaining: 900,
               }}
               currentQuestion={sessionData.currentQuestion}
               keyPoints={sessionData.keyPoints}
@@ -481,7 +467,7 @@ export default function SessionPage() {
         default:
           return (
             <TextInterviewUI
-              sessionData={mappedSessionData}
+              {...componentProps}
               userInput={userInput}
               setUserInput={setUserInput}
               onSubmitResponse={handleSendMessage}

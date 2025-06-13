@@ -29,6 +29,7 @@ interface VoiceInterviewUIProps {
     conversationHistory: ConversationMessage[];
     questionNumber: number;
     timeRemaining: number;
+    startTime: Date | null;
   };
   currentQuestion: string;
   keyPoints?: string[];
@@ -217,7 +218,7 @@ export default function VoiceInterviewUI({
 
           {/* Timer Container */}
           <div className="flex-shrink-0 flex items-center">
-            <Timer />
+            {sessionData.startTime && <Timer />}
           </div>
         </div>
       </div>
