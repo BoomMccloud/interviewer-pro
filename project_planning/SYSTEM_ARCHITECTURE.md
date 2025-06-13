@@ -56,24 +56,27 @@ graph TB
 
 ## 🌊 2. Core Interview Flow: User-Controlled Topics
 
-The system's core innovation is a user-controlled topic flow. This solves the problem of unpredictable AI behavior by giving the user explicit control over when to transition between high-level interview topics.
+The system's core logic is now driven by the session's state, which is loaded on page entry. This provides a robust and predictable user experience.
 
 ### The Flow
 
 ```mermaid
 graph TD
-    A[Start Interview] --> B[getFirstQuestion]
-    B --> C[Current Question #1 Displayed]
-    C --> D{User sends chat message}
-    D --> E[tRPC: submitResponse]
-    E --> F[continueConversation]
-    F --> G[AI Follow-up in Chat]
-    G --> D
-    C --> H{User clicks "Next Question"}
-    H --> I[tRPC: getNextTopicalQuestion]
-    I --> J[getNewTopicalQuestion]
-    J --> K[Current Question #2 Displayed]
-    K --> D
+    A[Start: User navigates to session page] --> B{tRPC: getActiveSession}
+    B -- Session Found --> C[Display Current State]
+    B -- Session Not Found/Completed --> D[Show 'Start' or 'Report' options]
+
+    C --> E{User sends chat message}
+    E --> F[tRPC: submitResponse]
+    F --> G[continueConversation]
+    G --> H[AI Follow-up in Chat]
+    H --> E
+
+    C --> I{User clicks "Next Question"}
+    I --> J[tRPC: getNextTopicalQuestion]
+    J --> K[getNewTopicalQuestion]
+    K --> L[Current Question #2 Displayed]
+    L --> E
 ```
 
 ### Separation of Concerns
@@ -82,9 +85,11 @@ This architecture creates a clear and predictable user experience.
 
 | Function Called | User Action | AI Prompt Focus | UI Destination |
 | :--- | :--- | :--- | :--- |
-| `getFirstQuestion()` | Starts new interview | Generate opening topical question | "Current Question" section |
-| `continueConversation()` | Sends a chat message | Dig deeper, provide feedback, ask follow-up on **same topic** | Chat history |
-| `getNewTopicalQuestion()` | Clicks "Next Question" button | Move to unexplored area, generate a **new topic** | "Current Question" section |
+| `getActiveSession()` | Page load | *(None - DB only)* | Entire UI state |
+| `submitResponse()` | Sends a chat message | Dig deeper, provide feedback, ask follow-up on **same topic** | Chat history |
+| `getNextTopicalQuestion()` | Clicks "Next Question" button | Move to unexplored area, generate a **new topic** | "Current Question" section |
+| `startInterviewSession()` | Clicks "Reset" | Re-initialize the session with the first question | "Current Question" section |
+| `saveSession()` | Clicks "Save" or "End" | *(None - DB only)* | Save progress or end session |
 
 ---
 
@@ -98,10 +103,11 @@ This section details the specific functions and procedures that power the interv
 -   **Role**: Main orchestrator component that handles session lifecycle and manages state.
 -   **tRPC Hooks Used**:
     -   `api.session.getActiveSession.useQuery`: Fetches the current state of an interview.
-    -   `api.session.startInterviewSession.useMutation`: Initializes the interview.
+    -   `api.session.startInterviewSession.useMutation`: Re-initializes an interview for a "reset" flow.
     -   `api.session.submitResponse.useMutation`: Sends user's chat message for a conversational response.
     -   `api.session.getNextTopicalQuestion.useMutation`: Requests a new topic.
-    -   `api.session.saveSession.useMutation`: Saves the current interview progress.
+    -   `api.session.saveSession.useMutation`: Saves progress or ends the interview.
+    -   `api.session.generateInterviewQuestion.useQuery`: Generates a standalone sample question.
 
 ### Backend tRPC Procedures
 
@@ -110,11 +116,14 @@ This section details the specific functions and procedures that power the interv
 
 | tRPC Procedure | Calls Gemini Function | Purpose |
 | :--- | :--- | :--- |
-| `startInterviewSession` | `getFirstQuestion()` | Initialize interview with first question. |
+| `createSession` | `getFirstQuestion()` | Creates a new session record in the DB and prepares the first question. |
+| `startInterviewSession` | `getFirstQuestion()` | Re-initializes an *existing* session with a new first question (used for "reset" flow). |
 | `submitResponse` | `continueConversation()` | Handle user responses within the same topic. |
 | `getNextTopicalQuestion` | `getNewTopicalQuestion()` | Handle user-controlled topic transitions. |
 | `getActiveSession` | *(None - DB only)* | Retrieve session state from the database. |
-| `saveSession` | *(None - DB only)* | Save session progress to the database. |
+| `saveSession` | *(None - DB only)* | Save session progress or mark the session as complete. |
+| `listForCurrentText` | *(None - DB only)* | Lists all sessions for a user's current JD/Resume. |
+| `getSessionReport` | *(None - DB only)* | Retrieves data for the interview report. |
 
 ### Gemini AI Service Layer
 
@@ -129,12 +138,14 @@ This section details the specific functions and procedures that power the interv
 | `continueConversation()` | 0.8 | 400 | Generates conversational follow-ups within the same topic. |
 | `getNewTopicalQuestion()` | 0.8 | 800 | Generates a new topical question based on history. |
 
-#### 🔴 **Deprecated Functions (For Historical Context)**
+#### 🔴 **Deprecated Procedures (Backend)**
 
-| Function | Status | Reason for Deprecation |
+The following tRPC procedures in `session.ts` are deprecated and should not be used in the frontend. They are kept for historical context during the migration to the `QuestionSegment` architecture.
+
+| tRPC Procedure | Status | Reason for Deprecation |
 | :--- | :--- | :--- |
-| `continueInterview()` | 🔴 **DEPRECATED** | Monolithic function with unpredictable behavior. Replaced by `continueConversation` and `getNewTopicalQuestion`. |
-| `getNextQuestion()` (tRPC) | 🔴 **DEPRECATED** | Confusing name. Replaced by `submitResponse` and `getNextTopicalQuestion`. |
+| `submitAnswerToSession` | 🔴 **DEPRECATED** | Legacy procedure using the old `history` field. Replaced by `submitResponse`. |
+| `getNextTopicalQuestionLegacy` | 🔴 **DEPRECATED** | Legacy procedure using the old `history` field. Replaced by `getNextTopicalQuestion`. |
 
 ---
 
