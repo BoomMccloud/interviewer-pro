@@ -132,7 +132,7 @@ async function seedMockData() {
 
     // 2. Clean up ALL existing interview-related data to ensure a clean slate
     console.log('🧹 Cleaning up old interview data...');
-    await db.feedbackConversation.deleteMany({});
+    // await db.feedbackConversation.deleteMany({}); // This model seems to have been removed
     await db.sessionData.deleteMany({});
     await db.jdResumeText.deleteMany({});
     console.log('🧼 Old data cleaned.');
@@ -190,6 +190,13 @@ async function seedMockData() {
         endTime: new Date(),
         questionSegments: mockQuestionSegments as unknown as Prisma.InputJsonValue,
         currentQuestionIndex: mockQuestionSegments.length - 1,
+        // @ts-expect-error - Prisma types might be stale in the linter
+        overallAssessment: {
+            summary: 'The candidate showed strong potential and a good grasp of core concepts, but could improve on the clarity and structure of their answers.',
+            strengths: ['Good understanding of database optimization.', 'Proactive in asking clarifying questions.'],
+            improvements: ['Could provide more specific examples from their experience.', 'Answers could be more concise.'],
+            score: 7,
+        }
       }
     });
     console.log(`✅ Mock session created (ID: ${mockSession.id})`);

@@ -2,7 +2,8 @@ import { type OverallAssessment, type Persona } from '~/types';
 import { CheckCircle2, XCircle } from 'lucide-react';
 
 interface OverallAssessmentProps {
-  assessmentData: OverallAssessment & {
+  assessmentData: {
+    assessment: OverallAssessment | null;
     persona: Persona | null;
     durationInSeconds: number;
   };
@@ -13,7 +14,20 @@ interface OverallAssessmentProps {
  * including persona, duration, summary, strengths, improvements, and score.
  */
 export default function OverallAssessment({ assessmentData }: OverallAssessmentProps) {
-  const { persona, durationInSeconds, summary, strengths, improvements, score } = assessmentData;
+  const { assessment, persona, durationInSeconds } = assessmentData;
+
+  if (!assessment) {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-50">
+          Overall Assessment
+        </h2>
+        <p className="mt-4 text-gray-700 dark:text-gray-300">No assessment data available.</p>
+      </div>
+    );
+  }
+
+  const { summary, strengths, improvements, score } = assessment;
 
   const scoreColorClass =
     score >= 8

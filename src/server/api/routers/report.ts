@@ -3,10 +3,9 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 import { getPersona } from "~/lib/personaService";
 import { getOverallAssessmentFromLLM } from "~/lib/gemini";
-import { zodQuestionSegmentArray } from "~/types";
+import { zodQuestionSegmentArray, type OverallAssessment } from "~/types";
 import { getQuestionFeedbackFromLLM } from "~/lib/gemini";
 import { getChatResponse } from "~/lib/gemini";
-import { zodFeedbackConversationHistory } from "~/types";
 
 
 export const reportRouter = createTRPCRouter({
@@ -25,21 +24,32 @@ export const reportRouter = createTRPCRouter({
                 throw new TRPCError({ code: 'UNAUTHORIZED', message: 'You are not authorized to view this report.' });
             }
 
-            const [jdResumeText, persona] = await Promise.all([
-                ctx.db.jdResumeText.findUnique({ where: { id: session.jdResumeTextId ?? '' } }),
-                getPersona(session.personaId),
-            ]);
-
-            if (!jdResumeText || !persona) {
-                throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Could not retrieve required session data.' });
+            const persona = await getPersona(session.personaId);
+            if (!persona) {
+                throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Could not retrieve persona data.' });
             }
 
-            const questionSegments = zodQuestionSegmentArray.parse(session.questionSegments);
+            let assessment: OverallAssessment;
 
-            const assessment = await getOverallAssessmentFromLLM(jdResumeText, persona, questionSegments);
+            if (session.overallAssessment) {
+                assessment = session.overallAssessment as OverallAssessment;
+            } else {
+                const jdResumeText = await ctx.db.jdResumeText.findUnique({ where: { id: session.jdResumeTextId ?? '' } });
+                if (!jdResumeText) {
+                    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Could not retrieve JD/resume data.' });
+                }
+
+                const questionSegments = zodQuestionSegmentArray.parse(session.questionSegments);
+                assessment = await getOverallAssessmentFromLLM(jdResumeText, persona, questionSegments);
+
+                await ctx.db.sessionData.update({
+                    where: { id: input.sessionId },
+                    data: { overallAssessment: assessment },
+                });
+            }
 
             return {
-                ...assessment,
+                assessment: assessment,
                 persona: persona,
                 durationInSeconds: session.durationInSeconds,
             };

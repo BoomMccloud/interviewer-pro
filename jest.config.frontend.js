@@ -14,7 +14,7 @@ export default {
     ],
   },
   transformIgnorePatterns: [
-    '/node_modules/(?!(@t3-oss/env-core|@t3-oss/env-nextjs|superjson|@babel/runtime|next)/).+\\.(m?js|ts)$'
+    '/node_modules/(?!(next-auth|@auth/core|@panva/hkdf|jose|@google/genai|@t3-oss/env-core|@t3-oss/env-nextjs|superjson|@babel/runtime|next)/).+\\.(m?js|ts)$'
   ],
   testMatch: [
     '<rootDir>/src/**/__tests__/**/*.{js,jsx,ts,tsx}',

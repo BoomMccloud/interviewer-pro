@@ -11,8 +11,8 @@ This document was originally written assuming REST API patterns with MSW for moc
 3. [Jest Setup & Configuration](#3-jest-setup--configuration)
 4. [Frontend Styling Architecture & Testing](#4-frontend-styling-architecture--testing)
 5. [Backend Testing (tRPC Routers)](#5-backend-testing-trpc-routers)
-6. [Frontend Testing (React Components)](#6-frontend-testing-react-components)
-7. [Integration Testing Strategy](#7-integration-testing-strategy)
+6. [UI Testing: Playwright E2E and Component Isolation](#6-ui-testing-playwright-e2e-and-component-isolation)
+7. [Integration & End-to-End (E2E) Testing](#7-integration--end-to-end-e2e-testing)
 8. [TDD Implementation by Development Phase](#8-tdd-implementation-by-development-phase)
 9. [Troubleshooting & Best Practices](#9-troubleshooting--best-practices)
 
@@ -411,7 +411,7 @@ export default {
 
 ---
 
-## 3. Frontend Styling Architecture & Testing
+## 4. Frontend Styling Architecture & Testing
 
 ### Standardized Styling System: Tailwind CSS + CVA
 
@@ -727,7 +727,7 @@ export default {
 
 ---
 
-## 4. Backend Testing (tRPC Routers)
+## 5. Backend Testing (tRPC Routers)
 
 This is the current standard for testing core business logic. Backend tests are run using `npm run test:backend`.
 
@@ -842,451 +842,193 @@ describe('Session tRPC Router', () => {
 
 ---
 
-## 5. Frontend Testing (React Components)
+## 6. UI Testing: Playwright E2E and Component Isolation
 
-Frontend component tests are run using `npm run test:frontend`. Our successful approach uses direct API/component mocking rather than network-level mocking.
+Frontend component tests are run using `npm run test:e2e`. Our primary strategy for testing UI components, especially those with backend data dependencies, has shifted from Jest/React Testing Library (RTL) to **Playwright End-to-End (E2E) tests**.
 
-### Testing Philosophy
+### 🏛️ Architectural Decision: Playwright over Jest for Integrated Components
 
-**Key Principles:**
-1. **Mock at the API utility level** rather than network level
-2. **Test component behavior** not implementation details
-3. **Focus on user interactions** and state changes
-4. **Maintain type safety** with Jest mock types
+Based on practical experience during development, we have found that writing Jest/RTL tests for components that use tRPC hooks is **brittle, complex, and provides low-confidence assurance**. The key challenges encountered were:
+- **Complex Mocking:** Mocking tRPC hooks and their various states (loading, data, error) is verbose and prone to implementation-detail coupling.
+- **Environment Issues:** Running tests in a JSDOM environment led to numerous configuration hurdles and missing browser APIs (`TextEncoder`, `fetch`, etc.).
+- **Low Confidence:** Mocked tests verify that the component *can* render data if the hook provides it, but they do not verify that the hook, the tRPC procedure, the database schema, and the component are all correctly integrated.
 
-### Successfully Implemented Approach: Direct tRPC Hook Mocking
+**Therefore, the official strategy is:**
+1.  **For components with backend dependencies (tRPC queries/mutations):** Test them using **Playwright E2E tests** that run against a real, seeded database. This ensures real-world behavior is tested from the user's perspective.
+2.  **For purely presentational/isolated components (no hooks):** Jest and RTL remain a viable option for testing visual states and simple interactions in isolation.
 
-Based on our successful implementation (36 passing tests), the recommended approach is to mock tRPC hooks directly.
+### Successfully Implemented Approach: Playwright E2E Testing
 
-#### Example: Dashboard Component with tRPC Integration
+Our most successful and reliable frontend tests follow the E2E pattern.
+
+#### Example: Testing the Report Page Display
+
+This test verifies that after a session is completed, the report page correctly displays the generated assessment. It relies on a seeded database state created by `globalSetup`.
 
 ```typescript
-// tests/frontend/dashboard.test.tsx
-import React from 'react';
-import { render, screen, waitFor, act } from '@testing-library/react';
-import { useRouter } from 'next/navigation';
-import DashboardPage from '~/app/(protected)/dashboard/page';
+// tests/e2e/report-page.test.ts
+import { test, expect } from '@playwright/test';
+import { prisma } from '~/server/db';
+import { TEST_USER_EMAIL, TEST_SESSION_ID } from './global-setup'; // Constants from setup
 
-// Mock Next.js router
-jest.mock('next/navigation', () => ({
-  useRouter: jest.fn(),
-}));
+test.describe('Session Report Page', () => {
+  // Use the authenticated state from global-setup.ts
+  test.use({ storageState: 'tests/e2e/.auth/user.json' });
 
-// Mock tRPC hooks
-jest.mock('~/trpc/react', () => ({
-  api: {
-    jdResume: {
-      getJdResumeText: {
-        useQuery: jest.fn(),
-      },
-      saveJdResumeText: {
-        useMutation: jest.fn(),
-      },
-    },
-    session: {
-      listForCurrentText: {
-        useQuery: jest.fn(),
-      },
-      createSession: {
-        useMutation: jest.fn(),
-      },
-    },
-  },
-}));
+  test('should display the overall assessment from a completed session', async ({ page }) => {
+    // ARRANGE: The database is already seeded by global-setup.ts
+    // The test user is logged in via storageState.
+    
+    // ACT: Navigate directly to the report page for the seeded session
+    await page.goto(`/sessions/${TEST_SESSION_ID}/report`);
 
-// Import mocked functions
-import { api } from '~/trpc/react';
+    // ASSERT: Check that the key sections of the assessment are rendered
+    
+    // Wait for the page to finish loading the data
+    await expect(page.getByRole('heading', { name: 'Overall Assessment' })).toBeVisible({ timeout: 15000 });
 
-const mockPush = jest.fn();
-const mockRouter = useRouter as jest.MockedFunction<typeof useRouter>;
+    // Check for specific text within the assessment sections
+    const keyStrengthsLocator = page.locator('div').filter({ hasText: /^Key Strengths/ });
+    await expect(keyStrengthsLocator).toContainText('The candidate demonstrated strong problem-solving skills.');
 
-describe('DashboardPage', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockRouter.mockReturnValue({
-      push: mockPush,
-    } as any);
-  });
+    const areasForImprovementLocator = page.locator('div').filter({ hasText: /^Areas for Improvement/ });
+    await expect(areasForImprovementLocator).toContainText('could improve on the clarity of their explanations.');
 
-  it('shows loading spinner initially', async () => {
-    // Arrange: Mock tRPC hooks to return loading states
-    (api.jdResume.getJdResumeText.useQuery as jest.Mock).mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      error: null,
-    });
-    (api.session.listForCurrentText.useQuery as jest.Mock).mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      error: null,
-    });
-
-    // Act
-    render(<DashboardPage />);
-
-    // Assert
-    expect(screen.getByTestId('spinner')).toBeInTheDocument();
-  });
-
-  it('displays loaded data correctly', async () => {
-    // Arrange: Mock successful data responses
-    (api.jdResume.getJdResumeText.useQuery as jest.Mock).mockReturnValue({
-      data: {
-        jdText: 'Test JD text',
-        resumeText: 'Test resume text',
-      },
-      isLoading: false,
-      error: null,
-    });
-    (api.session.listForCurrentText.useQuery as jest.Mock).mockReturnValue({
-      data: [],
-      isLoading: false,
-      error: null,
-    });
-
-    // Act
-    await act(async () => {
-      render(<DashboardPage />);
-    });
-
-    // Assert
-    await waitFor(() => {
-      expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
-    });
-    expect(screen.getByDisplayValue('Test JD text')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Test resume text')).toBeInTheDocument();
+    // Check that the final recommendation is visible
+    await expect(page.getByText('Recommendation: Strong Hire')).toBeVisible();
   });
 });
 ```
 
-#### TDD Workflow for Components
+### TDD Workflow for UI with Playwright
 
 **🔴 RED Phase:**
+1.  Create a new `*.test.ts` file in `tests/e2e`.
+2.  Write a Playwright test describing a user flow for a new feature.
+3.  Run `npm run test:e2e`. The test **fails** because the UI elements or routes don't exist.
+
+**🟢 GREEN Phase:**
+1.  Implement the minimum React components, pages, and API routes required to make the Playwright test pass.
+2.  Focus on making the E2E scenario work.
+
+**🔵 REFACTOR Phase:**
+1.  Clean up the React code (styling, component extraction).
+2.  Refactor backend logic if necessary.
+3.  Ensure all Playwright tests remain green.
+
+### Unit Testing for Isolated Components (When Applicable)
+
+For simple, stateless components without tRPC hooks, Jest/RTL can still be used.
+
 ```typescript
-it('should save text when save button is clicked', async () => {
-  // Write test first - this will fail because component doesn't exist
-  const user = userEvent.setup();
-  render(<MvpJdResumeInputForm />);
-  
-  await user.type(screen.getByLabelText('Job Description'), 'Test JD');
-  await user.click(screen.getByRole('button', { name: /save/i }));
-  
-  expect(mockSaveMutation).toHaveBeenCalledWith({
-    jdText: 'Test JD',
-    resumeText: '',
+// tests/frontend/components/UI/Button.test.tsx
+import React from 'react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Button } from '~/components/UI/Button'; // A simple component
+
+describe('Button', () => {
+  it('should render and handle clicks', async () => {
+    const handleClick = jest.fn();
+    render(<Button onClick={handleClick}>Click Me</Button>);
+    
+    const button = screen.getByRole('button', { name: /click me/i });
+    expect(button).toBeInTheDocument();
+    
+    await userEvent.click(button);
+    expect(handleClick).toHaveBeenCalledTimes(1);
   });
 });
 ```
-
-**🟢 GREEN Phase:**
-```typescript
-// Implement minimal component to make test pass
-export default function MvpJdResumeInputForm() {
-  const [jdText, setJdText] = useState('');
-  const saveMutation = api.jdResume.saveJdResumeText.useMutation();
-  
-  const handleSave = () => {
-    saveMutation.mutate({ jdText, resumeText: '' });
-  };
-
-  return (
-    <div>
-      <label htmlFor="jd">Job Description</label>
-      <textarea 
-        id="jd" 
-        value={jdText} 
-        onChange={(e) => setJdText(e.target.value)} 
-      />
-      <button onClick={handleSave}>Save</button>
-    </div>
-  );
-}
-```
-
-**🔵 REFACTOR Phase:**
-- Add proper styling
-- Improve error handling
-- Add loading states
-- Extract reusable components
-
-### Component Testing Guidelines
-
-1. **Mock Setup:** Use `jest.mock()` at the top level for modules and dependencies
-2. **Type Safety:** Use `jest.MockedFunction<typeof originalFunction>` for type-safe mocking
-3. **Reset Mocks:** Use `jest.clearAllMocks()` in `beforeEach` to ensure test isolation
-4. **Async Testing:** Use `waitFor()` for testing async behavior and state changes
-5. **User Interaction:** Use `@testing-library/user-event` for realistic user interactions
-6. **Act Wrapper:** Use `act()` for components with immediate async effects
-7. **Queries:** Prioritize accessible queries: `getByRole`, `getByLabelText`, `getByText`, then `getByTestId` as fallback
 
 ---
 
-## 7. Integration Testing Strategy
+## 7. Integration & End-to-End (E2E) Testing
 
-### Real Server Integration Testing
+Our integration and E2E testing strategy is unified under **Playwright**. This approach provides the highest confidence by testing the full application stack, from the frontend rendering in a real browser to the backend logic and database operations.
 
-Based on successful implementation, the recommended approach for integration testing is to use **real services** with minimal mocking, avoiding the complexity of mocking tRPC procedures and network layers.
+### Core Philosophy: Test Real User Flows
 
-#### Successful Pattern: Database + Server Health Testing
+We test the application just as a user would. This means our tests perform actions like:
+- Logging in.
+- Navigating between pages.
+- Filling out forms.
+- Clicking buttons.
+- Verifying that the UI updates correctly in response to these actions.
 
-```typescript
-// tests/integration/real-interview-flow.integration.test.ts
-/**
- * Real Server Integration Tests for Complete Interview Flow
- * 
- * Tests using REAL development server:
- * - Makes actual HTTP requests to localhost:3000
- * - Real database operations  
- * - Real authentication checks
- * - Manual verification of AI flows
- */
+### The E2E Testing Stack
 
-import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
-import { db } from '~/server/db';
+1.  **Playwright:** The test runner and browser automation framework.
+2.  **Live Dev Server:** Tests run against a `next dev` server instance.
+3.  **Real Database:** A separate test database is used, which is programmatically seeded before tests run.
+4.  **`globalSetup`:** A critical script (`tests/e2e/global-setup.ts`) that runs once before all tests to prepare the environment.
 
-const TEST_TIMEOUT = 60000; // 60 seconds for real operations
-const DEV_SERVER_URL = 'http://localhost:3000';
-const TEST_USER_ID = 'test-integration-user-' + Date.now();
+### The `globalSetup` Pattern
 
-describe('Real Interview Flow Integration Tests', () => {
-  beforeAll(async () => {
-    // Verify environment setup
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY must be set for integration tests');
-    }
+To ensure our tests are reliable and deterministic, we use a `globalSetup` file with the following responsibilities:
 
-    // Check if dev server is running
-    try {
-      await fetch(DEV_SERVER_URL);
-      console.log('✅ Development server is running');
-    } catch (error) {
-      throw new Error(`Development server not running on ${DEV_SERVER_URL}`);
-    }
-  }, TEST_TIMEOUT);
+1.  **Authenticate a Test User:** It programmatically logs in a test user and saves the authentication state (cookies, local storage) to a file. The tests then load this state to start in a logged-in context.
+2.  **Seed the Database:** It connects directly to the test database (`prisma`) to delete any pre-existing test data and create a consistent set of records (users, sessions, etc.) for the tests to run against. This avoids test pollution and ensures a predictable starting state.
 
-  describe('Database Schema Verification', () => {
-    it('should create and verify QuestionSegments structure', async () => {
-      // Create test user
-      const testUser = await db.user.create({
-        data: {
-          id: TEST_USER_ID,
-          email: `integration-test-${Date.now()}@example.com`,
-          name: 'Integration Test User',
-        }
-      });
-
-      // Create JD/Resume data
-      const jdResumeText = await db.jdResumeText.create({
-        data: {
-          userId: TEST_USER_ID,
-          jdText: 'Integration test job description',
-          resumeText: 'Integration test resume',
-        }
-      });
-
-      // Create session with QuestionSegments structure
-      const session = await db.sessionData.create({
-        data: {
-          userId: TEST_USER_ID,
-          jdResumeTextId: jdResumeText.id,
-          personaId: 'swe-interviewer-standard',
-          durationInSeconds: 15 * 60,
-          questionSegments: [],
-          currentQuestionIndex: 0,
-        }
-      });
-
-      // Verify QuestionSegments structure
-      expect(session.questionSegments).toBeDefined();
-      expect(Array.isArray(session.questionSegments)).toBe(true);
-      expect(session.currentQuestionIndex).toBe(0);
-
-      // Test updating with actual QuestionSegment data
-      const mockQuestionSegment = {
-        questionId: "q1_opening",
-        questionNumber: 1,
-        questionType: "opening",
-        question: "Tell me about your experience.",
-        keyPoints: ["Focus on specific projects", "Mention technologies"],
-        startTime: new Date().toISOString(),
-        endTime: null,
-        conversation: [
-          {
-            role: "ai",
-            content: "Tell me about your experience.",
-            timestamp: new Date().toISOString(),
-            messageType: "question"
-          }
-        ]
-      };
-
-      const updatedSession = await db.sessionData.update({
-        where: { id: session.id },
-        data: {
-          questionSegments: [mockQuestionSegment],
-          currentQuestionIndex: 0,
-        }
-      });
-
-      expect(Array.isArray(updatedSession.questionSegments)).toBe(true);
-      expect((updatedSession.questionSegments as unknown[]).length).toBe(1);
-
-      console.log('✅ QuestionSegments structure verified');
-    }, TEST_TIMEOUT);
-  });
-
-  describe('Server Health and Authentication', () => {
-    it('should verify development server is accessible', async () => {
-      const response = await fetch(DEV_SERVER_URL);
-      expect(response.status).toBe(200);
-      console.log('✅ Development server health check passed');
-    }, TEST_TIMEOUT);
-
-    it('should handle unauthenticated API requests appropriately', async () => {
-      try {
-        const response = await fetch(`${DEV_SERVER_URL}/api/trpc/session.listForCurrentText`);
-        // Should require authentication
-        expect(response.status).toBeGreaterThanOrEqual(400);
-        console.log('✅ Unauthenticated requests properly rejected');
-      } catch (error) {
-        // Network errors are also acceptable here
-        expect(error).toBeDefined();
-        console.log('✅ Unauthenticated requests properly rejected');
-      }
-    }, TEST_TIMEOUT);
-  });
-
-  describe('Manual Testing Integration', () => {
-    it('should provide comprehensive manual testing instructions', async () => {
-      console.log(`
-🎯 MANUAL TESTING INSTRUCTIONS:
-
-To complete the integration test, please:
-
-1. 📱 Open browser: ${DEV_SERVER_URL}
-2. 🔐 Login to the application 
-3. 📝 Navigate to dashboard and create/upload JD and Resume
-4. 🚀 Start a new interview session
-5. 💬 Have a conversation with the AI (multiple exchanges)
-6. 🎯 Try transitioning to a new topic
-7. 💾 Save or end the session
-
-Test User ID: ${TEST_USER_ID}
-
-Database structures verified above ensure:
-✅ QuestionSegments architecture working
-✅ Database schema correct
-✅ Development server running
-✅ GEMINI_API_KEY accessible
-
-Manual flow tests:
-- Real AI API calls with Gemini
-- Real authentication flow  
-- Real frontend/backend integration
-- Real user interactions
-      `);
-
-      expect(true).toBe(true); // Test framework requirement
-    });
-  });
-
-  afterAll(async () => {
-    // Cleanup test data
-    try {
-      await db.sessionData.deleteMany({ where: { userId: TEST_USER_ID } });
-      await db.jdResumeText.deleteMany({ where: { userId: TEST_USER_ID } });
-      await db.user.deleteMany({ where: { id: TEST_USER_ID } });
-    } catch (error) {
-      console.warn('Cleanup warning:', error);
-    }
-  }, TEST_TIMEOUT);
-});
-```
-
-#### Integration Test Runner Script
-
-```bash
-#!/bin/bash
-# scripts/run-integration-test.sh
-
-echo "🔧 Setting up Integration Test Environment..."
-
-# Check if GEMINI_API_KEY is set
-if [ -z "$GEMINI_API_KEY" ]; then
-    echo "❌ ERROR: GEMINI_API_KEY is not set!"
-    echo "Please set: export GEMINI_API_KEY='your-api-key-here'"
-    exit 1
-fi
-
-# Check if development server is running
-echo "🌐 Checking development server..."
-if curl -s -f http://localhost:3000 > /dev/null; then
-    echo "✅ Development server running"
-else
-    echo "⚠️  Please start dev server: npm run dev"
-    read -p "Press Enter when server is running..."
-fi
-
-# Verify database connection
-echo "💾 Checking database..."
-npx prisma db push --accept-data-loss > /dev/null 2>&1
-if [ $? -eq 0 ]; then
-    echo "✅ Database connected"
-else
-    echo "❌ Database connection failed"
-    exit 1
-fi
-
-echo "🚀 Running Integration Tests..."
-npx jest -c jest.config.backend.js tests/integration/real-interview-flow.integration.test.ts --verbose --forceExit
-
-echo "✅ Integration test completed!"
-```
-
-### Benefits of This Approach
-
-**✅ Advantages:**
-1. **No Mock Complexity** - Eliminates tRPC mock definition order issues
-2. **Real Environment Testing** - Tests against actual development server
-3. **Database Schema Verification** - Confirms QuestionSegments architecture works
-4. **High Confidence** - Manual testing provides end-to-end validation
-5. **Easy Debugging** - Real services make issues easier to trace
-
-**🎯 When to Use:**
-- Verifying database schema changes
-- Testing system integration points
-- Validating deployment readiness
-- Confirming external service integrations
-- End-to-end workflow verification
-
-**⚠️ Limitations:**
-- Requires development server to be running
-- Needs real environment setup (API keys, database)
-- Manual testing steps require human verification
-- Slower execution than pure unit tests
-
-### Integration with CI/CD
-
-For automated environments, this pattern can be adapted:
+#### Example `global-setup.ts`
 
 ```typescript
-// Conditional integration testing
-const isCI = process.env.CI === 'true';
-const hasRealServices = process.env.GEMINI_API_KEY && process.env.DATABASE_URL;
+// tests/e2e/global-setup.ts
+import { chromium, type FullConfig } from '@playwright/test';
+import { prisma } from '~/server/db';
 
-describe('Integration Tests', () => {
-  beforeAll(() => {
-    if (isCI && !hasRealServices) {
-      console.log('⏭️  Skipping integration tests in CI without real services');
-      return;
-    }
+// Use constants for test data to share between setup and tests
+export const TEST_USER_EMAIL = 'test-user@example.com';
+export const TEST_SESSION_ID = 'cl-test-session-123';
+
+async function globalSetup(config: FullConfig) {
+  // 1. Authenticate and save state
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  
+  // This relies on the E2E_TESTING flag being set to enable test login
+  await page.goto('http://localhost:3000/login'); 
+  await page.getByLabel('Email').fill(TEST_USER_EMAIL);
+  await page.getByRole('button', { name: 'Sign in with Email' }).click();
+  await page.waitForURL('**/dashboard');
+  
+  await page.context().storageState({ path: 'tests/e2e/.auth/user.json' });
+
+  // 2. Seed the database
+  // Clean up previous test data
+  await prisma.user.deleteMany({ where: { email: TEST_USER_EMAIL } });
+
+  // Create fresh data
+  const user = await prisma.user.create({
+    data: {
+      id: 'test-user-id-123',
+      email: TEST_USER_EMAIL,
+    },
   });
 
-  (isCI && !hasRealServices ? describe.skip : describe)('Real Service Tests', () => {
-    // Integration tests that require real services
+  await prisma.sessionData.create({
+    data: {
+      id: TEST_SESSION_ID,
+      userId: user.id,
+      overallAssessment: {
+        // ... seeded assessment data
+      },
+      // ... other fields
+    },
   });
-});
+
+  await browser.close();
+}
+
+export default globalSetup;
 ```
+
+### Running E2E Tests
+
+1.  **Start the dev server:** `npm run dev`
+2.  **Run the tests:** `npm run test:e2e`
+
+This process ensures that every test run starts with a clean, predictable environment, leading to more stable and reliable results.
 
 ---
 

@@ -27,7 +27,10 @@ export default function QuestionFeedbackSection({ segment, sessionId }: Question
   });
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+    <div 
+      className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+      data-testid={`question-feedback-section-${segment.questionId}`}
+    >
       <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
         {segment.questionNumber}. {segment.question}
       </h3>

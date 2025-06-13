@@ -47,7 +47,6 @@ type SessionOutput = RouterOutputs['session']['getSessionById'];
 
 describe('ReportContent Component', () => {
   const mockAssessmentData: OverallAssessmentOutput = {
-    // @ts-expect-error - This is the target state, the type is not yet updated
     assessment: {
         summary: 'This is a test summary.',
         strengths: ['Great problem solving', 'Clear communication'],
@@ -64,7 +63,7 @@ describe('ReportContent Component', () => {
     durationInSeconds: 600,
     questionSegments: [],
     currentQuestionIndex: 0,
-    overallSummary: null,
+    overallAssessment: null,
     jdResumeTextId: 'jd-1',
     startTime: new Date(),
     endTime: new Date(),
@@ -170,6 +169,6 @@ describe('ReportContent Component', () => {
     render(<ReportContent />, { wrapper });
 
     // Assert
-    expect(screen.getByText(/No assessment data found/i)).toBeInTheDocument();
+    expect(screen.getByText(/No assessment data available/i)).toBeInTheDocument();
   });
 }); 
