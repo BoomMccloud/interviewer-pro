@@ -63,7 +63,7 @@ model SessionData {
   durationInSeconds    Int
   questionSegments     Json // Will store an array of QuestionSegment
   currentQuestionIndex Int       @default(0)
-  overallSummary       String?
+  overallAssessment    Json?
   
   jdResumeTextId String?
   jdResumeText   JdResumeText? @relation(fields: [jdResumeTextId], references: [id])

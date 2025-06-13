@@ -53,6 +53,25 @@ All changes for this feature should follow the Test-Driven Development (TDD) met
 
 ---
 
+## Test Coverage for This Feature
+
+### Backend (tRPC)
+- **File:** `tests/server/routers/report.test.ts`
+- **Coverage:**
+  - Returns saved `overallAssessment` if present (LLM is not called)
+  - Generates, saves, and returns assessment if not present
+  - Handles session not found and unauthorized access
+
+### Frontend (React)
+- **File:** `tests/frontend/app/(protected)/sessions/[id]/report/report-content.test.tsx`
+- **Coverage:**
+  - Renders assessment summary, strengths, improvements, and score from the API
+  - Shows loading spinner
+  - Shows error message
+  - Handles missing assessment gracefully
+
+---
+
 ## 1. Data Model Changes
 
 - **Replace** `overallSummary` (String?) with `overallAssessment` (Json?) in the `SessionData` model.
