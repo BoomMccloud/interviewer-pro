@@ -126,31 +126,57 @@ describe('Report tRPC Router', () => {
     });
 
     describe('getOverallAssessment procedure', () => {
-        it('should return a high-level assessment for an authorized user', async () => {
+        const mockAssessment = {
+            summary: "The candidate is a good fit.",
+            strengths: ["Strong problem-solving skills."],
+            improvements: ["Could be more concise."],
+            score: 8,
+        };
+
+        it('should return the saved assessment if it already exists in the database', async () => {
+            // Arrange
+            await db.sessionData.update({
+                where: { id: session.id },
+                // @ts-expect-error - overallAssessment is a new field, TS types might be stale during TDD.
+                data: { overallAssessment: mockAssessment as unknown as Prisma.InputJsonValue },
+            });
+            const caller = await getTestCaller(user);
+            mockGetOverallAssessmentFromLLMFn.mockResolvedValue({ summary: 'This should not be called', strengths: [], improvements: [], score: 0 });
+
+            // Act
+            const result = await caller.report.getOverallAssessment({ sessionId: session.id });
+
+            // Assert
+            // @ts-expect-error - The procedure's return type will be updated to include an 'assessment' property.
+            expect(result.assessment).toEqual(mockAssessment);
+            expect(mockGetOverallAssessmentFromLLMFn).not.toHaveBeenCalled();
+        });
+
+        it('should generate, save, and return assessment if not present', async () => {
             // Arrange
             const caller = await getTestCaller(user);
-            const mockAssessment = {
-                overallFit: [{ competency: 'Test Competency', assessment: 'Excellent', score: 9 }]
-            };
             mockGetOverallAssessmentFromLLMFn.mockResolvedValue(mockAssessment);
 
             // Act
             const result = await caller.report.getOverallAssessment({ sessionId: session.id });
 
             // Assert
-            expect(result).toEqual({
-                ...mockAssessment,
-                persona: MOCK_PERSONA_OBJECT,
-                durationInSeconds: session.durationInSeconds,
-            });
+            // @ts-expect-error - The procedure's return type will be updated to include an 'assessment' property.
+            expect(result.assessment).toEqual(mockAssessment);
+            expect(result.persona).toEqual(MOCK_PERSONA_OBJECT);
+            expect(result.durationInSeconds).toBe(session.durationInSeconds);
 
-            // Verify that the mocked LLM function was called correctly
             expect(mockGetOverallAssessmentFromLLMFn).toHaveBeenCalledTimes(1);
             expect(mockGetOverallAssessmentFromLLMFn).toHaveBeenCalledWith(
                 expect.objectContaining({ id: jdResume.id }),
                 MOCK_PERSONA_OBJECT,
                 session.questionSegments
             );
+
+            // Verify it was saved to the database
+            const updatedSession = await db.sessionData.findUnique({ where: { id: session.id } });
+            // @ts-expect-error - overallAssessment is a new field, TS types might be stale during TDD.
+            expect(updatedSession?.overallAssessment).toEqual(mockAssessment);
         });
 
         it('should throw a NOT_FOUND error for a session that does not exist', async () => {
