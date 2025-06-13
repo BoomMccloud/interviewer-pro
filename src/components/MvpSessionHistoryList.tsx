@@ -88,10 +88,10 @@ export default function MvpSessionHistoryList({
         >
           <div className="flex justify-between items-start mb-2">
             <div>
-              <h3 className="font-medium text-gray-900">
+              <h3 className="font-medium text-gray-900 dark:text-white">
                 Interview Session
               </h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
                 {formatDate(session.startTime)}
               </p>
             </div>
@@ -108,7 +108,7 @@ export default function MvpSessionHistoryList({
             </div>
           </div>
 
-          <div className="flex justify-between items-center text-sm text-gray-600">
+          <div className="flex justify-between items-center text-sm text-gray-600 dark:text-gray-300">
             <div className="flex gap-4">
               {session.endTime && (
                 <span>
@@ -117,11 +117,11 @@ export default function MvpSessionHistoryList({
               )}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-blue-600 hover:text-blue-800">
+              <span className="text-blue-600 hover:text-blue-800 dark:text-blue-400">
                 View Report
               </span>
               <svg 
-                className="w-4 h-4 text-blue-600" 
+                className="w-4 h-4 text-blue-600 dark:text-blue-400" 
                 fill="none" 
                 stroke="currentColor" 
                 viewBox="0 0 24 24"

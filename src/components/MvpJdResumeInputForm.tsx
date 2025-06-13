@@ -116,7 +116,7 @@ export default function MvpJdResumeInputForm({
   return (
     <div className="space-y-4">
       <div>
-        <label htmlFor="jd-text" className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="jd-text" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Job Description
         </label>
         <textarea
@@ -130,7 +130,7 @@ export default function MvpJdResumeInputForm({
       </div>
 
       <div>
-        <label htmlFor="resume-text" className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="resume-text" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Resume
         </label>
         <textarea
