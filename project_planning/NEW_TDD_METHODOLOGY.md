@@ -264,7 +264,6 @@ Our integration and E2E testing strategy is unified under **Playwright**. This a
 ### Core Philosophy: Test Real User Flows
 
 We test the application just as a user would. This means our tests perform actions like:
-- Logging in.
 - Navigating between pages.
 - Filling out forms.
 - Clicking buttons.
@@ -273,57 +272,76 @@ We test the application just as a user would. This means our tests perform actio
 ### The E2E Testing Stack
 
 1.  **Playwright:** The test runner and browser automation framework.
-2.  **Live Dev Server:** Tests run against a `next dev` server instance.
-3.  **Real Database:** A separate test database is used, which is programmatically seeded before tests run.
-4.  **`globalSetup`:** A critical script (`tests/e2e/global-setup.ts`) that runs once before all tests to prepare the environment.
+2.  **Live Dev Server:** Tests run against a `next dev` server instance started automatically by Playwright.
+3.  **Real Test Database:** A separate test database is used, which is programmatically seeded before the test suite runs.
+4.  **`globalSetup` script (`tests/e2e/global-setup.ts`):** A script that prepares the database.
+5.  **Server-Side Auth Mocking:** A utility (`src/lib/test-auth-utils.ts`) that bypasses the real login flow for tests.
 
-### The `globalSetup` Pattern
+### The E2E Authentication & Seeding Pattern
 
-To ensure our tests are reliable and deterministic, we use a `globalSetup` file with the following responsibilities:
+To ensure our tests are reliable, fast, and deterministic, we use a combination of database seeding and server-side authentication mocking. This is a crucial architectural pattern in the project.
 
-1.  **Authenticate a Test User:** It programmatically logs in a test user and saves the authentication state (cookies, local storage) to a file. The tests then load this state to start in a logged-in context.
-2.  **Seed the Database:** It connects directly to the test database (`prisma`) to delete any pre-existing test data and create a consistent set of records (users, sessions, etc.) for the tests to run against. This avoids test pollution and ensures a predictable starting state.
+**⚠️ CORRECTION NOTICE:** The previous version of this document described a pattern involving programmatic login and saving a `storageState` file. This has been deprecated in favor of a more robust server-side approach.
+
+**How it Works:**
+
+1.  **Enabling Test Mode:** The `playwright.config.ts` file starts the Next.js server with the environment variable `E2E_TESTING=true`.
+2.  **Database Seeding (`globalSetup`):** Before any tests run, the `global-setup.ts` script connects directly to the test database and seeds it with a consistent set of data (e.g., a test user with a known ID and email, a test session with a known ID, etc.). **Its sole responsibility is database preparation.**
+3.  **Server-Side Auth Bypass:** A special utility, `getSessionForTest`, is used throughout the server-side code instead of the standard NextAuth `auth()` function. When it detects `E2E_TESTING=true`, it **completely bypasses the real authentication logic** and returns a hardcoded mock session object.
+4.  **Matching Data:** The user details in the mock session object (e.g., `user.id`, `user.email`) are identical to the user details seeded into the database by `globalSetup`.
+
+**Benefits of this approach:**
+- **Speed & Reliability:** Tests do not need to perform a slow and potentially brittle UI login flow.
+- **Isolation:** It cleanly separates the concern of database state (handled by seeding) from authentication state (handled by mocking).
+- **Determinism:** Every test run starts with the exact same authenticated user and database state.
 
 #### Example `global-setup.ts` and Test
 
+This example reflects the actual, corrected pattern in use.
+
 ```typescript
 // tests/e2e/global-setup.ts
-import { chromium, type FullConfig } from '@playwright/test';
-import { prisma } from '~/server/db';
+import { PrismaClient } from '@prisma/client';
 
-export const TEST_USER_EMAIL = 'test-user@example.com';
-export const TEST_SESSION_ID = 'cl-test-session-123';
+// Define static IDs for deterministic test data
+export const E2E_SESSION_ID = 'clxnt1o60000008l3f9j6g9z7';
+export const E2E_USER_ID = 'e2e-test-user-id-123';
+export const E2E_USER_EMAIL = 'e2e-test@example.com';
 
-async function globalSetup(config: FullConfig) {
-  // 1. Authenticate and save state
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-  
-  await page.goto('http://localhost:3000/login'); 
-  await page.getByLabel('Email').fill(TEST_USER_EMAIL);
-  await page.getByRole('button', { name: 'Sign in with Email' }).click();
-  await page.waitForURL('**/dashboard');
-  
-  await page.context().storageState({ path: 'tests/e2e/.auth/user.json' });
+async function globalSetup() {
+  const prisma = new PrismaClient();
+  try {
+    console.log('🌱 [Global Setup] Seeding database for Playwright tests...');
+    
+    // 1. Clean up any data from previous test runs
+    await prisma.sessionData.deleteMany({ where: { id: E2E_SESSION_ID } });
+    await prisma.user.deleteMany({ where: { id: E2E_USER_ID } });
 
-  // 2. Seed the database
-  await prisma.user.deleteMany({ where: { email: TEST_USER_EMAIL } });
-  const user = await prisma.user.create({ data: { id: 'test-user-id-123', email: TEST_USER_EMAIL } });
-  await prisma.sessionData.create({ data: { id: TEST_SESSION_ID, userId: user.id, ... } });
+    // 2. Create the test user and session data
+    const user = await prisma.user.create({ 
+      data: { id: E2E_USER_ID, email: E2E_USER_EMAIL } 
+    });
+    await prisma.sessionData.create({ 
+      data: { id: E2E_SESSION_ID, userId: user.id, /* ... other required fields */ } 
+    });
 
-  await browser.close();
+    console.log('✅ [Global Setup] Database seeded successfully.');
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 export default globalSetup;
 
 // tests/e2e/report-page.test.ts
 import { test, expect } from '@playwright/test';
-import { TEST_SESSION_ID } from './global-setup';
+import { E2E_SESSION_ID } from './global-setup'; // Import the known ID
 
 test.describe('Session Report Page', () => {
-  test.use({ storageState: 'tests/e2e/.auth/user.json' });
+  // NOTE: `test.use({ storageState: ... })` is NOT needed because authentication
+  // is handled automatically on the server when E2E_TESTING=true.
 
   test('should display the overall assessment', async ({ page }) => {
-    await page.goto(`/sessions/${TEST_SESSION_ID}/report`);
+    await page.goto(`/sessions/${E2E_SESSION_ID}/report`);
     await expect(page.getByRole('heading', { name: 'Overall Assessment' })).toBeVisible();
     await expect(page.getByText('Recommendation: Strong Hire')).toBeVisible();
   });
@@ -332,8 +350,8 @@ test.describe('Session Report Page', () => {
 
 ### Running E2E Tests
 
-1.  **Start the dev server:** `npm run dev`
-2.  **Run the tests:** `npm run test:e2e`
+1.  **Start the dev server with the test environment:** Playwright does this automatically when you run the test command.
+2.  **Run the tests:** `npx playwright test`
 
 ---
 
@@ -366,6 +384,6 @@ This section outlines the TDD process for different types of features.
 - **Slow E2E Tests:** Use Playwright's UI mode (`npx playwright test --ui`) to debug tests step-by-step.
 - **Flaky Tests:** Ensure your `globalSetup` script is fully idempotent, meaning it correctly cleans up and resets state every single time it's run.
 - **Database Errors in Tests:** Ensure your test database schema is synced with `schema.prisma`. Run `npx prisma db push --schema=./prisma/schema.prisma` if you see discrepancies.
-- **Authentication:** The `E2E_TESTING=true` environment variable must be set for the dev server to enable the test authentication flow used by `globalSetup`.
+- **Authentication:** The `E2E_TESTING=true` environment variable must be set for the dev server. This enables the server-side auth bypass that returns a mock test session, making all test requests automatically authenticated.
 
 ``` 
