@@ -210,9 +210,39 @@ export default function SessionPage() {
     }
   };
 
-  const handleSendVoiceInput = async (audioBlob: Blob) => {
-    console.log('Voice input received:', audioBlob);
-    await handleSendMessage('Voice response processed');
+  // tRPC mutation for server-side STT
+  const transcribeVoice = api.session.transcribeVoice.useMutation();
+
+  const blobToBase64 = async (blob: Blob): Promise<string> => {
+    const arrayBuffer = await blob.arrayBuffer();
+    // Convert binary data to Base64 string for transport via JSON / SuperJSON
+    const uint8Array = new Uint8Array(arrayBuffer);
+    let binary = "";
+    for (let i = 0; i < uint8Array.byteLength; i++) {
+      binary += String.fromCharCode(uint8Array[i]!);
+    }
+    return btoa(binary);
+  };
+
+  const handleSendVoiceInput = async (audioBlob: Blob): Promise<void> => {
+    try {
+      // 1. Encode the blob for transport (SuperJSON can't handle Blob)
+      const base64Audio = await blobToBase64(audioBlob);
+
+      // 2. Call the STT mutation
+      const result = await transcribeVoice.mutateAsync({
+        sessionId,
+        audioBlob: base64Audio,
+      });
+
+      // 3. Feed transcript into existing text response flow
+      if (result?.transcript) {
+        await handleSendMessage(result.transcript);
+      }
+    } catch (error) {
+      console.error('Failed to transcribe voice input:', error);
+      alert('Failed to process your voice response. Please try again.');
+    }
   };
 
   // 🔗 NEW: Dedicated mutation for saving session progress

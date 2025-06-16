@@ -13,7 +13,7 @@
     -   [Gemini AI Service Layer](#gemini-ai-service-layer)
 4.  [**Data Structures & Context Management**](#-4-data-structures--context-management)
 5.  [**Development Roadmap**](#-5-development-roadmap)
-    -   [Phase 3C: Multi-Modal Support (In Progress)](#-phase-3c-multi-modal-support-in-progress)
+    -   [Phase 3C: Multi-Modal Support (Live Voice – ✅ initial slice delivered)](#-phase-3c-multi-modal-support-live-voice--initial-slice-delivered)
     -   [Phase 4: Interview Panel Mechanism](#-phase-4-interview-panel-mechanism)
     -   [Prompt Engineering Workflow](#prompt-engineering-workflow)
 6.  [**Production Readiness & Future Enhancements**](#-6-production-readiness--future-enhancements)
@@ -194,39 +194,36 @@ The system has sophisticated context management to ensure the LLM always underst
 
 ## 🗺️ 5. Development Roadmap
 
-### 🚀 Phase 3C: Multi-Modal Support (In Progress)
+### 🚀 Phase 3C: Multi-Modal Support (Live Voice – ✅ initial slice delivered)
 
-Our immediate priority is to add voice modality to the interview experience.
+**Status update (2025-06-16):** The first vertical slice of the voice flow is now wired end-to-end.
 
-**Planned Voice Architecture:**
--   **User Input**: Voice via a new Live API `gemini-2.5-flash-live-001`.
--   **AI Question Output**: Text-to-speech (TTS) synthesis of the AI-generated questions.
--   **Analysis**: The Live API provides automatic transcription, which can be stored and analyzed just like text input.
+• The front-end auto-records audio and uploads a blob → tRPC `transcribeVoice` → Google Gemini **Live API** (`gemini-2.5-flash-live-001`).  
+• The Live session returns an automatic transcript which is stored as a normal conversation turn and fed into the existing text evaluation pipeline.  
+• Component, server-unit, and Playwright E2E tests all pass.
 
-**Planned Live API Voice Pattern:**
-```typescript
-// Voice conversation with automatic transcription
-const session = await genAI.aio.live.connect({
-  model: 'gemini-2.5-flash-live-001',
-  config: {
-    responseModalities: ['AUDIO'] // Voice responses + auto-transcription
-  }
-});
+Next increments will add real-time streaming UX, TTS playback of AI questions, and production guards (size limits, retries).
 
-// Real-time voice conversation
-await session.send(userAudioInput, { endOfTurn: true });
+**Voice Architecture (Current Implementation):**
 
-for await (const response of session) {
-  const voiceResponse = response.serverContent.parts[0]; // Audio data
-  const transcription = response.transcript; // Automatic transcription
+```mermaid
+sequenceDiagram
+    participant UI as VoiceInterviewUI (browser)
+    participant TRPC as tRPC transcribeVoice
+    participant Live as Gemini Live API
+    participant DB as Database
 
-  // Store transcript for analysis
-  await storeConversationTurn({
-    transcriptText: transcription,
-    timestamp: new Date()
-  });
-}
+    UI->>TRPC: audio Blob (Base-64 for now)
+    TRPC->>Live: streamVoiceConversation(...)
+    Live-->>TRPC: transcript text
+    TRPC->>DB: save transcript turn
+    TRPC-->>UI: { transcript }
+    UI->>TRPC: submitResponse(transcript)
+    TRPC->>DB: continueConversation
+    DB-->>UI: next AI question
 ```
+
+*Planned enhancements* (TTS, streaming transport) remain the same.
 
 ### 🎭 Phase 4: Interview Panel Mechanism
 

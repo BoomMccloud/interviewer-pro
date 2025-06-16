@@ -79,6 +79,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     env: {
       E2E_TESTING: 'true',
+      AUTH_SECRET: 'test-secret'
     },
     stdout: 'pipe',
     stderr: 'pipe',

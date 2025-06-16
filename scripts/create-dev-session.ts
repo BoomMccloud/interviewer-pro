@@ -5,8 +5,8 @@
  */
 
 import 'dotenv/config';
-import { db } from '../src/server/db.js';
-import { MOCK_USER_ID, MOCK_USER_EMAIL, MOCK_USER_NAME } from '../src/lib/test-auth-utils.js';
+import { db } from '../src/server/db';
+import { MOCK_USER_ID, MOCK_USER_EMAIL, MOCK_USER_NAME } from '../src/lib/test-auth-utils';
 
 async function createDevSession() {
   try {

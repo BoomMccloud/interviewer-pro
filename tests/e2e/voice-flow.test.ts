@@ -10,6 +10,12 @@
  * The test is expected to FAIL until Phase 2 implementation is complete.
  */
 
+/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, no-empty-function, no-useless-constructor */
+// The above rule disablement is limited to this E2E scaffold file because
+// we intentionally stub browser APIs in ways that would normally violate
+// strict TS/ESLint guidelines. These mocks are *only* used in the test
+// environment and will be revisited once the real implementation lands.
+
 import { test, expect } from '@playwright/test';
 
 // Seeded session ID used across the E2E suite
@@ -27,8 +33,6 @@ const mediaMocks = () => {
     private state: 'inactive' | 'recording' | 'stopped' = 'inactive';
     public ondataavailable: ((e: BlobEvent) => void) | null = null;
     public onstop: (() => void) | null = null;
-
-    constructor() {}
 
     start() {
       this.state = 'recording';
@@ -51,12 +55,13 @@ const mediaMocks = () => {
   // @ts-ignore – replace in window
   window.MediaRecorder = MockMediaRecorder;
 
-  navigator.mediaDevices = {
-    getUserMedia: async () => {
-      // Return a dummy MediaStream object; we only need interface compatibility.
-      return new MediaStream();
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: {
+      getUserMedia: async () => new MediaStream(),
     },
-  } as any;
+    configurable: true,
+  });
 };
 
 // -------------------------------------------------------------------------
@@ -84,5 +89,36 @@ test.describe('Voice Interview – hands-free flow (RED)', () => {
     // Assert that **transcript text is NOT rendered**
     await expect(page.locator('text=Transcribing…')).not.toBeVisible();
     await expect(page.locator('data-testid=transcript-line')).toHaveCount(0);
+  });
+
+  test('opens a Gemini Live socket on page load', async ({ page }) => {
+    await page.addInitScript(mediaMocks);
+    await page.goto(`/sessions/${TEST_SESSION_ID}?mode=voice`);
+
+    // TODO: Once implemented, the client will expose a data attribute or
+    // we will intercept a mock WS server. For now, deliberately fail.
+    expect(false).toBe(true);
+  });
+
+  test('Next Question button stops recording & prompts model', async ({ page }) => {
+    await page.addInitScript(mediaMocks);
+    await page.goto(`/sessions/${TEST_SESSION_ID}?mode=voice`);
+
+    // Click the Next Question control (data-testid="next-question-btn")
+    await page.getByTestId('next-question-btn').click();
+
+    // Expectation: UI shows *new* AI question text.
+    // This will fail until feature is wired
+    expect(await page.getByTestId('current-question-text').textContent()).toMatch(/Question 2/i);
+  });
+
+  test('End Interview button terminates session and navigates to report', async ({ page }) => {
+    await page.addInitScript(mediaMocks);
+    await page.goto(`/sessions/${TEST_SESSION_ID}?mode=voice`);
+
+    await page.getByTestId('end-interview-btn').click();
+
+    // Should redirect to the report page.
+    await expect(page).toHaveURL(/\/sessions\/.*\/report/);
   });
 }); 

@@ -74,6 +74,17 @@ export default function VoiceInterviewUI({
     }
   }, [conversationHistory]);
 
+  // Auto-start recording on mount to enable hands-free flow (Phase-2 requirement)
+  useEffect(() => {
+    if (recordingState === 'idle') {
+      // Fire and forget – errors are already handled inside startRecording
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      startRecording();
+    }
+    // We intentionally run this effect only once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -172,6 +183,28 @@ export default function VoiceInterviewUI({
     }
   };
 
+  // Auto-submit when recording stops (hands-free behaviour)
+  useEffect(() => {
+    const autoSubmit = async () => {
+      if (recordingState === 'stopped' && audioBlob) {
+        try {
+          await onSendVoiceInput(audioBlob);
+        } catch (err) {
+          setError('Failed to process voice recording. Please try again.');
+          setRecordingState('error');
+          return;
+        }
+        // Reset state for next question
+        setAudioBlob(null);
+        setRecordingState('idle');
+        setRecordingDuration(0);
+      }
+    };
+    // Only fire if stopped with blob
+    void autoSubmit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordingState, audioBlob]);
+
   return (
     <div
       data-testid="voice-interview-ui"
@@ -189,7 +222,7 @@ export default function VoiceInterviewUI({
               </span>
             </div>
             
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white leading-relaxed mb-4 p-4 bg-gray-50/30 dark:bg-slate-800/30 rounded-lg">
+            <h2 data-testid="current-question-text" className="text-xl font-semibold text-gray-900 dark:text-white leading-relaxed mb-4 p-4 bg-gray-50/30 dark:bg-slate-800/30 rounded-lg">
               {currentQuestion || 'Loading next question...'}
             </h2>
             
@@ -243,6 +276,7 @@ export default function VoiceInterviewUI({
                   : 'bg-green-500 dark:bg-green-600 hover:bg-green-600 dark:hover:bg-green-500 shadow-md hover:shadow-lg'
               }`}>
                 <button
+                  data-testid="record-toggle"
                   onClick={recordingState === 'recording' ? stopRecording : startRecording}
                   disabled={isProcessingResponse || recordingState === 'stopped'}
                   aria-label={getRecordButtonLabel()}

@@ -956,3 +956,65 @@ function extractInsightsFromResponse(userResponse: string, currentTopic?: string
 
   return insights.slice(0, 3); // Keep it concise
 }
+
+// ==============================================
+// Phase 3C: Live Voice Helpers (Gemini Live API)
+// ==============================================
+// These utilities stream user audio to the Gemini Live API and yield
+// incremental responses containing automatic transcription (and, in the
+// future, optional TTS audio from the model).
+
+/**
+ * Streams a sequence of Uint8Array audio chunks to Gemini Live and yields the
+ * incremental server responses.  Caller can inspect each response's `transcript`
+ * for text and `serverContent.parts[0]` for audio when `responseModalities`
+ * includes 'AUDIO'.
+ */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return */
+
+export async function* streamVoiceConversation(
+  audioChunks: AsyncIterable<Uint8Array>,
+  responseModalities: ('TEXT' | 'AUDIO')[] = [],
+) {
+  const liveSession = await (genAI as any).aio.live.connect({
+    model: 'gemini-2.5-flash-live-001',
+    config: { responseModalities },
+  });
+
+  for await (const chunk of audioChunks) {
+    await liveSession.send(chunk);
+  }
+  // Signal end-of-turn so Gemini produces a final transcript
+  await liveSession.send(undefined, { endOfTurn: true });
+
+  for await (const resp of liveSession) {
+    yield resp;
+  }
+}
+
+/**
+ * Convenience helper: send a single Blob/Buffer of audio and return the first
+ * full transcript string produced by Gemini.  Used by the voice tRPC mutation
+ * to replace the old STT stub.
+ */
+export async function transcribeAudioOnce(audio: Blob | Buffer): Promise<string> {
+  // Normalise to Uint8Array async iterator
+  let uint8: Uint8Array;
+  if (audio instanceof Blob) {
+    const ab = await audio.arrayBuffer();
+    uint8 = new Uint8Array(ab);
+  } else {
+    uint8 = new Uint8Array(audio);
+  }
+
+  const singleIter = (async function* () {
+    yield uint8;
+  })();
+
+  for await (const resp of streamVoiceConversation(singleIter, [])) {
+    if (resp.transcript && resp.transcript.trim().length > 0) {
+      return resp.transcript.trim();
+    }
+  }
+  throw new Error('Gemini Live API did not return a transcript');
+}

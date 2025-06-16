@@ -21,8 +21,12 @@ import {
 } from "~/types";
 import type { Prisma } from '@prisma/client'; // Changed to type import
 import { TRPCError } from "@trpc/server";
+import { transcribe as sttTranscribe } from "~/lib/speechService";
 
-// Helper function for consistent question generation
+/* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
+/**
+ * Helper function for consistent question generation
+ */
 async function generateQuestionForSession(
   jdResumeTextId: string,
   personaId: string,
@@ -822,6 +826,66 @@ export const sessionRouter = createTRPCRouter({
         saved: true,
         ended: endSession,
       };
+    }),
+
+  /**
+   * Voice flow: accept an audio blob, run STT, persist transcript, and return it.
+   */
+  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+  transcribeVoice: protectedProcedure
+    .input(
+      z.object({
+        sessionId: z.string(),
+        // We can't validate Blob in Zod; accept unknown and assume Buffer/Blob
+        audioBlob: z.any(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { sessionId, audioBlob } = input;
+
+      // 1. Check ownership
+      const session = await ctx.db.sessionData.findUnique({
+        where: { id: sessionId, userId: ctx.session.user.id },
+      });
+      if (!session) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+      }
+
+      // 2. Call STT provider
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      const transcript = await sttTranscribe(audioBlob);
+
+      // 3. Append to conversation of current question segment (simplified)
+      let updatedSegments: any[] = [];
+      try {
+        updatedSegments = Array.isArray(session.questionSegments)
+          ? (session.questionSegments as any[])
+          : JSON.parse(session.questionSegments as unknown as string);
+      } catch {
+        updatedSegments = [];
+      }
+
+      const idx = session.currentQuestionIndex ?? 0;
+      if (!updatedSegments[idx]) {
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+        updatedSegments[idx] = { conversation: [] };
+      }
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+      if (!updatedSegments[idx].conversation) updatedSegments[idx].conversation = [];
+      updatedSegments[idx].conversation.push({
+        role: 'user',
+        content: transcript,
+        timestamp: new Date().toISOString(),
+      });
+
+      await ctx.db.sessionData.update({
+        where: { id: sessionId },
+        data: {
+          questionSegments: updatedSegments as any,
+        },
+      });
+
+      return { transcript };
     }),
 });
 

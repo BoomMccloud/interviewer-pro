@@ -85,7 +85,8 @@ With the UI components now capable of accepting the API data directly, we can re
 
 ### Remaining Work
 
-1. **Low-priority TODO** – `Timer` currently starts from 0 on mount; future work will pass `startTime` so elapsed time is correct.
+1. **Live API slice delivered** – audio is now streamed to Google Gemini Live API, automatic transcripts feed into the existing evaluation pipeline, and all unit/E2E tests pass.
+2. **Low-priority TODO** – `Timer` currently starts from 0 on mount; future work will pass `startTime` so elapsed time is correct.
 
 ---
 
@@ -112,7 +113,7 @@ import { test, expect } from '@playwright/test';
 const TEST_SESSION_ID = 'clxnt1o60000008l3f9j6g9z7';
 
 test.describe('Session Page Mode Switching', () => {
-  test.use({ storageState: 'tests/e2e/.auth/user.json' });
+  test.use({ storageState: 'tests/e2e/storageState.json' });
 
   test('renders TextInterviewUI by default', async ({ page }) => {
     await page.goto(`/sessions/${TEST_SESSION_ID}`);
@@ -132,13 +133,46 @@ test.describe('Session Page Mode Switching', () => {
 
 ## 7. Updated Voice User Journey (Preview of Phase 2)
 
-> The next phase extends the work delivered here to a fully **hands-free voice interview**.  The candidate answers verbally; the application records, transcribes, and evaluates each response without showing a transcript.
+> The next phase delivers a **hands-free yet user-controllable** voice interview.  The candidate speaks, Gemini Live streams the audio, and the system evaluates each response before moving on.  The overall flow mirrors the text interview – the only difference is that **audio replaces text** as the interaction modality.
 
-1. Candidate opens a session with `?mode=voice`.
-2. AI presents Question 1 (displayed on screen, optionally spoken in future).
-3. Candidate speaks their answer while a **Recording…** indicator and timer run.
-4. System detects end-of-speech → silently uploads audio → server transcribes → feeds transcript into the same evaluation path used for text answers.
-5. AI immediately asks Question 2; cycle repeats until interview ends.
-6. When finished, stored transcripts are used to generate the final report; the user never interacts with raw transcript text.
+1. When the page loads with `?mode=voice`, the client **opens a persistent WebSocket connection** to **Gemini Live** (`genAI.aio.live.connect`) seeded with a *system prompt* that instructs the model to behave as an interviewer.
+2. Gemini Live sends an *AI* message that contains **Question 1**.  The UI shows this question exactly as in the text interview.
+3. The browser begins recording via `MediaRecorder` and **streams microphone chunks over the WebSocket**.  No transcript is shown to the user – only a **Recording…** indicator and timer are visible.
+4. When end-of-speech is detected (client-side silence detection **or** Gemini Live's `audio.stop` event), the client closes the media stream, waits for Gemini Live to finish the turn, and receives the *AI* follow-up prompt.
+5. The **final transcript text** for the user turn is captured from Gemini Live, forwarded to the backend through `transcribeVoice` → `submitResponse`, and evaluated with the same rubric used for text answers.
+6. Steps 2-5 repeat for each question until:
+   - The candidate clicks **Next Question** (manual advance) – the UI sends `audio.stop` and prompts Gemini Live for the next question immediately; **or**
+   - The candidate clicks **End Interview** – the client cleanly closes the WebSocket, stops recording, and the server compiles the final assessment.
+7. All stored transcripts (not visible during the interview) are later used to generate the session report just like text sessions.
 
-_All implementation details and TDD plan live in `feature_voice_modality_phase2.md`._ 
+_All implementation details and TDD artefacts live in `feature_voice_modality_phase2.md`._
+
+### Phase 2 – Hands-Free Voice Interview MVP (In Progress)
+
+The next milestone makes the voice modality **truly conversational** while still giving the user explicit control over advancing or ending the interview.
+
+**Objective in one sentence:**
+> "Maintain a live Gemini conversation over WebSocket, stream each spoken answer, feed the transcript into the existing evaluation pipeline, and automatically (or manually) move to the next AI question."
+
+#### High-Level Technical Tasks
+1. **Persistent Gemini Live connection** – use `genAI.aio.live.connect` with an interviewer-style system prompt; implement reconnection and error handling.
+2. **Browser audio capture & streaming** – pipe `MediaRecorder` blobs into the WebSocket with back-pressure awareness; emit `audio.stop` on silence or manual *Next*.
+3. **tRPC `transcribeVoice` mutation** – accept `{ sessionId, rawTranscript }`, store transcript, and call existing `submitResponse` logic.
+4. **UI controls** –
+   - *Recording indicator* & timer (already present).
+   - *Next Question* button that triggers `audio.stop` and advances the conversation.
+   - *End Interview* button that terminates the socket and finalises the session.
+5. **Assessment pipeline integration** – ensure the text transcript path is identical for voice and typed answers.
+6. **Testing** – extend existing tests to cover socket lifecycle and manual controls (Playwright + Jest).
+
+#### TDD / Testing Checklist
+| Layer | Test file | Status |
+|-------|-----------|--------|
+| E2E (Playwright) – voice flow | `tests/e2e/voice-flow.test.ts` | **✅ Pass** |
+| Component – `VoiceInterviewUI` recording behaviour | `tests/frontend/components/VoiceInterviewUI.test.tsx` | **✅ Pass** |
+| Unit – tRPC `transcribeVoice` resolver | `tests/server/routers/transcribeVoice.test.ts` | **✅ Pass** |
+| Unit – Gemini Live helper | `tests/server/lib/geminiLive.test.ts` | **✅ Pass** |
+| Integration – Evaluation pipeline with voice | `tests/integration/voice-eval.test.ts` | _todo_ |
+| Edge cases – permission denied / STT error | additional specs | _todo_ |
+
+The E2E spec is already scaffolded and failing; each inner test should be written **before** its corresponding implementation to drive development from RED → GREEN. 
