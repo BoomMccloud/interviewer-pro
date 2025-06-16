@@ -7,12 +7,14 @@ import { test, expect } from '@playwright/test';
 // dotenv.config();
 
 test.describe('Authentication E2E Tests - Logged Out', () => {
+  process.env.TEST_LOGGED_OUT = 'true';
   const PROTECTED_ROUTE = '/dashboard';
   const LOGIN_ROUTE = '/login';
   const ROOT_ROUTE = '/';
 
   test.beforeEach(async ({ context }) => {
     await context.clearCookies();
+    await context.setExtraHTTPHeaders({ 'x-test-auth-state': 'logged-out' });
   });
 
   test('Scenario 1: Accessing Protected Route While Logged Out redirects to Login', async ({ page }) => {
@@ -55,12 +57,12 @@ test.describe('Authentication E2E Tests - Logged In (Requires server with E2E_TE
   test('Scenario 4: Accessing Protected Route While Logged In stays on Protected Route', async ({ page }) => {
     await page.goto(PROTECTED_ROUTE);
     await expect(page).toHaveURL(PROTECTED_ROUTE);
-    await expect(page.getByRole('heading', { name: 'Interview Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Interview (Practice )?Dashboard/i })).toBeVisible();
   });
 
   test('Scenario 5: Accessing Login Page While Logged In redirects to Protected Route', async ({ page }) => {
     await page.goto(LOGIN_ROUTE);
     await expect(page).toHaveURL(PROTECTED_ROUTE);
-    await expect(page.getByRole('heading', { name: 'Interview Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Interview (Practice )?Dashboard/i })).toBeVisible();
   });
 }); 

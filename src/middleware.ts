@@ -13,13 +13,15 @@ const protectedRoutes = ['/dashboard', '/sessions'];
 
 export default async function middleware(req: NextRequest) {
   const { nextUrl } = req;
-  const session = await getSessionForTest();
+  const session = await getSessionForTest(req);
   const isAuthenticated = !!session;
 
   // For debugging in E2E test mode
   if (process.env.E2E_TESTING === 'true') {
     console.log(`[Middleware] E2E_TESTING=${process.env.E2E_TESTING}, Path: ${nextUrl.pathname}, Authenticated: ${isAuthenticated}`);
   }
+
+  console.log('[Middleware] Session:', session, 'Path:', nextUrl.pathname);
 
   if (!isAuthenticated && protectedRoutes.some(route => nextUrl.pathname.startsWith(route))) {
     if (process.env.E2E_TESTING === 'true') {

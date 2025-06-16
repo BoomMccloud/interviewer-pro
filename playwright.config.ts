@@ -80,7 +80,7 @@ export default defineConfig({
     env: {
       E2E_TESTING: 'true',
     },
-    stdout: 'ignore',
+    stdout: 'pipe',
     stderr: 'pipe',
   },
 }); 
