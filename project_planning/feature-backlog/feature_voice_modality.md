@@ -176,3 +176,65 @@ The next milestone makes the voice modality **truly conversational** while still
 | Edge cases – permission denied / STT error | additional specs | _todo_ |
 
 The E2E spec is already scaffolded and failing; each inner test should be written **before** its corresponding implementation to drive development from RED → GREEN. 
+
+## 8. Implementation Overview – How Everything Fits Together
+
+> This section gives new contributors (or future-you) a concrete mental model of the data-flow and files involved in Phase 2.
+
+### 8.1 Sequence Diagram
+
+```mermaid
+sequenceDiagram
+  participant UI as VoiceInterviewUI (React)
+  participant Mic as MediaRecorder
+  participant G as Gemini Live (WebSocket)
+  participant API as tRPC Mutations
+  participant DB as Prisma DB
+
+  UI->>G: openLiveInterviewSession(system prompt)
+  G-->>UI: **AI Question 1**
+  UI->>Mic: start recording
+  loop stream chunks
+    Mic-->>UI: audio blob
+    UI->>G: sendAudioChunk(blob)
+  end
+  alt silence or **Next** click
+    UI->>G: audio.stop
+  end
+  G-->>UI: { transcript: "user answer" }
+  UI->>API: transcribeVoice({ sessionId, rawTranscript })
+  API->>DB: save Response & score
+  API-->>UI: OK (trpc)
+  G-->>UI: **AI Question 2**
+  UI->>Mic: restart recorder
+  Note over UI,G: Repeat until **End Interview**
+  UI->>G: close socket
+  UI->>API: endSession()
+  API-->>UI: redirect /sessions/[id]/report
+```
+
+### 8.2 Key Client-Side Modules
+| File | Responsibility |
+|------|----------------|
+| `src/lib/gemini.ts` | `openLiveInterviewSession()` – wraps `genAI.aio.live.connect`; exposes `sendAudioChunk`, `stopTurn`, `close`, and an event emitter for AI/user messages. |
+| `src/hooks/useMicrophoneStream.ts` | Starts/stops `MediaRecorder`, detects silence, streams blobs to `sendAudioChunk`. |
+| `src/components/Sessions/InterviewUI/VoiceInterviewUI.tsx` | UI orchestrator: renders question text, shows "Recording…", wires **Next** / **End** buttons, and pushes transcripts to the backend. |
+
+> **Data-testids used in Playwright**
+> * `socket-open` – rendered once the WebSocket is ready.  
+> * `next-question-btn` – manual advance.  
+> * `end-interview-btn` – finishes session.  
+> * `current-question-text` – wrapper around the active AI prompt.
+
+### 8.3 Server Touch-Points
+* **`transcribeVoice`** – now accepts `{ rawTranscript }` (plain text) instead of a blob; stores it and calls existing evaluation logic.
+* **`endSession`** – closes the session, computes summary, lets the front-end navigate to the report page.
+
+### 8.4 Test Strategy Recap
+| Layer | What flips to green | Trigger |
+|-------|--------------------|---------|
+| Unit (`geminiLive.test.ts`) | Helper exposes `sendAudioChunk` & `stopTurn` | implement socket wrapper |
+| Component (`VoiceInterviewUI.test.tsx`) | Auto-recording, socket status, Next/End wiring | implement component & hook |
+| E2E (`voice-flow.test.ts`) | Socket marker appears, Next/End buttons work | integrate everything end-to-end |
+
+_If the installed `@google/genai` lacks `.aio.live`, the helper will auto-polyfill with a local mock so tests remain deterministic._ 
