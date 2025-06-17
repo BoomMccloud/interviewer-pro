@@ -14,7 +14,43 @@ import '@testing-library/jest-dom';
 // NOTE: Direct import rather than alias to keep the path explicit for now.
 import VoiceInterviewUI from '../../../src/components/Sessions/InterviewUI/VoiceInterviewUI';
 
+// Mock Next.js router for React Testing Library environment
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
+
+// Mock the openLiveInterviewSession helper
+const mockStopTurn = jest.fn();
+const mockClose = jest.fn();
+
+// Avoid temporal dead-zone by referencing the mocks lazily inside wrapper fns
+jest.mock('~/lib/gemini', () => {
+  const listeners: Record<string, ((payload: any) => void)[]> = {};
+  const session = {
+    sendAudioChunk: jest.fn(),
+    stopTurn: (...args: any[]) => mockStopTurn(...args),
+    close: (...args: any[]) => mockClose(...args),
+    on: (event: string, cb: (payload: any) => void) => {
+      (listeners[event] ||= []).push(cb);
+    },
+  };
+  return {
+    openLiveInterviewSession: jest.fn().mockResolvedValue(session),
+    __emit: (event: string, payload: any) => {
+      (listeners[event] || []).forEach((cb) => cb(payload));
+    },
+  };
+});
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { __emit } = require('~/lib/gemini');
+
+// Clear mocks between tests
+afterEach(() => {
+  jest.clearAllMocks();
+});
 
 describe('VoiceInterviewUI – hands-free recording flow', () => {
   /**
@@ -46,6 +82,7 @@ describe('VoiceInterviewUI – hands-free recording flow', () => {
     class FakeRecorder {
       ondataavailable: ((e: { data: Blob }) => void) | null = null;
       onstop: (() => void) | null = null;
+      state: 'recording' = 'recording';
       start = jest.fn();
       stop = jest.fn().mockImplementation(() => {
         if (this.ondataavailable) {
@@ -53,6 +90,7 @@ describe('VoiceInterviewUI – hands-free recording flow', () => {
           this.ondataavailable({ data: blob });
         }
         if (this.onstop) this.onstop();
+        this.state = 'inactive';
       });
       // eslint-disable-next-line @typescript-eslint/no-empty-function
       constructor() {}
@@ -138,18 +176,101 @@ describe('VoiceInterviewUI – hands-free recording flow', () => {
     expect(blobArg).toBeInstanceOf(Blob);
   });
 
-  it('exposes a connected status once Gemini Live socket opens (scaffold)', () => {
-    // TODO: implement once socket helper is injected; deliberately fail for RED phase
-    expect(true).toBe(false);
+  it('renders socket-open indicator once Gemini session is ready', async () => {
+    const onSendVoiceInput = jest.fn();
+    const dummySessionData = {
+      sessionId: 'test',
+      isActive: true,
+      personaId: 'swe',
+      currentQuestion: 'Q1',
+      conversationHistory: [],
+      questionNumber: 1,
+      timeRemaining: 600,
+      startTime: null,
+    };
+
+    await act(async () => {
+      render(
+        <VoiceInterviewUI
+          sessionData={dummySessionData as any}
+          currentQuestion="Q1"
+          keyPoints={[]}
+          isProcessingResponse={false}
+          onSendVoiceInput={onSendVoiceInput}
+          onPause={jest.fn()}
+          onEnd={jest.fn()}
+        />,
+      );
+    });
+
+    expect(await screen.findByTestId('socket-open')).toBeInTheDocument();
   });
 
-  it('Next Question button emits audio.stop event (scaffold)', () => {
-    // TODO: intercept mock and assert; currently failing placeholder
-    expect(true).toBe(false);
+  it('Next Question button calls stopTurn', async () => {
+    const dummySessionData = {
+      sessionId: 'test',
+      isActive: true,
+      personaId: 'swe',
+      currentQuestion: 'Q1',
+      conversationHistory: [],
+      questionNumber: 1,
+      timeRemaining: 600,
+      startTime: null,
+    };
+
+    await act(async () => {
+      render(
+        <VoiceInterviewUI
+          sessionData={dummySessionData as any}
+          currentQuestion="Q1"
+          keyPoints={[]}
+          isProcessingResponse={false}
+          onSendVoiceInput={jest.fn()}
+          onPause={jest.fn()}
+          onEnd={jest.fn()}
+        />,
+      );
+    });
+
+    const btn = await screen.findByTestId('next-question-btn');
+    await act(async () => {
+      btn.click();
+    });
+
+    expect(mockStopTurn).toHaveBeenCalled();
   });
 
-  it('End Interview button triggers disconnect (scaffold)', () => {
-    // TODO: assert disconnect called; failing placeholder
-    expect(true).toBe(false);
+  it('End Interview button calls close', async () => {
+    const dummySessionData = {
+      sessionId: 'test',
+      isActive: true,
+      personaId: 'swe',
+      currentQuestion: 'Q1',
+      conversationHistory: [],
+      questionNumber: 1,
+      timeRemaining: 600,
+      startTime: null,
+    };
+
+    await act(async () => {
+      render(
+        <VoiceInterviewUI
+          sessionData={dummySessionData as any}
+          currentQuestion="Q1"
+          keyPoints={[]}
+          isProcessingResponse={false}
+          onSendVoiceInput={jest.fn()}
+          onPause={jest.fn()}
+          onEnd={jest.fn()}
+        />,
+      );
+    });
+
+    const btn = await screen.findByTestId('end-interview-btn');
+    await act(async () => {
+      btn.click();
+    });
+
+    expect(mockClose).toHaveBeenCalled();
   });
 }); 

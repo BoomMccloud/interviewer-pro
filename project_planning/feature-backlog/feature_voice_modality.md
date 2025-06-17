@@ -106,8 +106,8 @@ With the UI components now capable of accepting the API data directly, we can re
 
 **File**: `tests/e2e/session-mode.test.ts`
 
-```typescript
-import { test, expect } from '@playwright/test';
+     ```typescript
+     import { test, expect } from '@playwright/test';
 
 // NOTE: Hard-coded seed ID aligns with other E2E suites.
 const TEST_SESSION_ID = 'clxnt1o60000008l3f9j6g9z7';
@@ -116,16 +116,16 @@ test.describe('Session Page Mode Switching', () => {
   test.use({ storageState: 'tests/e2e/storageState.json' });
 
   test('renders TextInterviewUI by default', async ({ page }) => {
-    await page.goto(`/sessions/${TEST_SESSION_ID}`);
-    await expect(page.getByTestId('text-interview-ui')).toBeVisible();
-  });
+         await page.goto(`/sessions/${TEST_SESSION_ID}`);
+         await expect(page.getByTestId('text-interview-ui')).toBeVisible();
+       });
 
   test('renders VoiceInterviewUI when mode=voice', async ({ page }) => {
     await page.goto(`/sessions/${TEST_SESSION_ID}?mode=voice`);
-    await expect(page.getByTestId('voice-interview-ui')).toBeVisible();
-  });
-});
-```
+         await expect(page.getByTestId('voice-interview-ui')).toBeVisible();
+       });
+     });
+     ```
 
 > **Note**: No failing "Red" state expected because the implementation already matches behaviour; the test simply guards against regressions. 
 
@@ -238,3 +238,32 @@ sequenceDiagram
 | E2E (`voice-flow.test.ts`) | Socket marker appears, Next/End buttons work | integrate everything end-to-end |
 
 _If the installed `@google/genai` lacks `.aio.live`, the helper will auto-polyfill with a local mock so tests remain deterministic._ 
+
+## 9. Live API Session Constraints & Updated Approach *(2025-06-17)*
+
+> **Discovery** – According to Google's Live API session guide, *audio-only sessions are limited to 15 minutes* before the server terminates the WebSocket [[Live API Session Guide](https://ai.google.dev/gemini-api/docs/live-session)].  To keep strict control over time-outs **and** stay aligned with the text-interview flow (one question at a time), we will open **one Live API session per interview question** instead of maintaining a single long-running socket.
+
+### 9.1 Revised Per-Question Flow
+1. **Open session** – `openLiveInterviewSession({ questionText })` embeds the question and rubric into the *systemInstruction*.
+2. **Candidate speaks** – mic audio is streamed until either silence is detected or the user clicks **End Answer**.  A 10-minute guard timer (`MAX_ANSWER_MS = 10 min`) auto-terminates the turn.
+3. **Model returns JSON** – after receiving `activityEnd`, Gemini produces
+   ```json
+   { "assessment": "…", "coaching": "…" }
+   ```
+4. **Persist & display** – client calls `saveResponse` tRPC with the JSON.  UI shows coaching immediately.
+5. **Close session** – socket is closed.  The next question opens a **fresh** Live API connection, ensuring we never approach the 15-minute limit.
+
+### 9.2 Impact on Existing Tasks
+- The previous plan's *per-turn transcript → evaluation* pipeline (Steps 3 & 5 in §7) is **superseded**.  We now store the structured JSON instead of raw transcripts.
+- `transcribeVoice` mutation becomes `saveResponse({ assessment, coaching })`.
+- Tests will be updated:
+  * **Unit** – `geminiLive.test.ts` expects parsed JSON.
+  * **Component** – `VoiceInterviewUI.test.tsx` waits for coaching text.
+  * **E2E** – `voice-flow.test.ts` verifies that *three* sequential sockets open and coaching appears after each answer.
+
+### 9.3 Open Items
+1. Decide whether to use *session resumption* so Gemini retains context across the three questions.
+2. Update database schema if we wish to keep the raw conversation blob for audit.
+3. Add a UI countdown or progress bar indicating the 10-minute time cap per answer.
+
+--- 

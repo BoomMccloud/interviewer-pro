@@ -1018,3 +1018,117 @@ export async function transcribeAudioOnce(audio: Blob | Buffer): Promise<string>
   }
   throw new Error('Gemini Live API did not return a transcript');
 }
+
+// === Live Audio Helpers ==================================================
+
+/**
+ * Lightweight event emitter so we don't pull in Node's EventEmitter for the browser bundle.
+ */
+class SimpleEmitter<EventMap extends Record<string, unknown[]>> {
+  private listeners: { [K in keyof EventMap]?: ((...args: EventMap[K]) => void)[] } = {};
+
+  on<K extends keyof EventMap>(event: K, cb: (...args: EventMap[K]) => void) {
+    (this.listeners[event] ||= []).push(cb);
+  }
+
+  off<K extends keyof EventMap>(event: K, cb: (...args: EventMap[K]) => void) {
+    this.listeners[event] = (this.listeners[event] || []).filter((fn) => fn !== cb);
+  }
+
+  emit<K extends keyof EventMap>(event: K, ...args: EventMap[K]) {
+    (this.listeners[event] || []).forEach((fn) => fn(...args));
+  }
+}
+
+export interface LiveInterviewMessage {
+  role: 'ai' | 'user';
+  text: string;
+}
+
+export interface LiveInterviewSession {
+  /** Stream one chunk of microphone audio */
+  sendAudioChunk: (chunk: Uint8Array | Blob) => Promise<void>;
+  /** Ends the current user turn (audio.stop) and waits for next AI message */
+  stopTurn: () => Promise<void>;
+  /** Cleanly closes the socket */
+  close: () => Promise<void>;
+  /** Subscribe to messages */
+  on: (
+    event: 'socket-open' | 'ai-message' | 'transcript' | 'message' | 'error' | 'close',
+    cb: (payload: LiveInterviewMessage | Error | void) => void,
+  ) => void;
+  off: (
+    event: 'socket-open' | 'ai-message' | 'transcript' | 'message' | 'error' | 'close',
+    cb: (payload: LiveInterviewMessage | Error | void) => void,
+  ) => void;
+}
+
+/**
+ * Opens a persistent Gemini Live audio session seeded with the interviewer prompt.
+ * In test environments, the underlying connect method is mocked by jest.
+ */
+export async function openLiveInterviewSession(systemPrompt: string): Promise<LiveInterviewSession> {
+  // Feature-detect the experimental API.
+  const connectFn: unknown = (genAI as any)?.aio?.live?.connect;
+  if (typeof connectFn !== 'function') {
+    throw new Error('GoogleGenAI.live.connect is not available in this SDK version');
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  const liveConnection = await (connectFn as any)({ model: MODEL_NAME_TEXT, systemInstruction: systemPrompt });
+
+  const emitter = new SimpleEmitter<{
+    'socket-open': [];
+    'ai-message': [LiveInterviewMessage];
+    transcript: [LiveInterviewMessage];
+    message: [LiveInterviewMessage]; // legacy – emitted for both ai & transcript
+    error: [Error];
+    close: [];
+  }>();
+
+  // Emit ready event immediately so the UI can show a connected state
+  emitter.emit('socket-open');
+
+  // Start listening for streamed responses
+  void (async () => {
+    try {
+      for await (const chunk of liveConnection) {
+        if (chunk?.text) {
+          // Distinguish AI or user transcript based on Gemini chunk metadata.
+          const isTranscript = chunk.type === 'TRANSCRIPT' || chunk.role === 'user';
+          const role: 'ai' | 'user' = isTranscript ? 'user' : 'ai';
+          const payload: LiveInterviewMessage = { role, text: chunk.text };
+
+          // Granular events
+          if (isTranscript) {
+            emitter.emit('transcript', payload);
+          } else {
+            emitter.emit('ai-message', payload);
+          }
+          // Legacy combined event
+          emitter.emit('message', payload);
+        }
+      }
+      emitter.emit('close');
+    } catch (err) {
+      emitter.emit('error', err as Error);
+    }
+  })();
+
+  return {
+    sendAudioChunk: async (chunk) => {
+      await liveConnection.send(chunk);
+    },
+    stopTurn: async () => {
+      await liveConnection.send({ audio: 'stop' });
+    },
+    close: async () => {
+      await liveConnection.close?.();
+      emitter.emit('close');
+    },
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    on: (event, cb) => emitter.on(event as any, cb as any),
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    off: (event, cb) => emitter.off(event as any, cb as any),
+  };
+}

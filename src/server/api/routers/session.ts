@@ -829,61 +829,44 @@ export const sessionRouter = createTRPCRouter({
     }),
 
   /**
-   * Voice flow: accept an audio blob, run STT, persist transcript, and return it.
+   * Voice Modality – transcribe audio and store response
    */
-  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
   transcribeVoice: protectedProcedure
-    .input(
-      z.object({
-        sessionId: z.string(),
-        // We can't validate Blob in Zod; accept unknown and assume Buffer/Blob
-        audioBlob: z.any(),
-      }),
-    )
+    .input(z.object({
+      sessionId: z.string(),
+      // Accept any blob-like object; during unit tests this will be a real Blob.
+      audioBlob: z.any(),
+    }))
     .mutation(async ({ ctx, input }) => {
       const { sessionId, audioBlob } = input;
 
-      // 1. Check ownership
-      const session = await ctx.db.sessionData.findUnique({
+      // Ensure session belongs to user
+      const sessionRecord = await db.sessionData.findUnique({
         where: { id: sessionId, userId: ctx.session.user.id },
       });
-      if (!session) {
+      if (!sessionRecord) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
       }
 
-      // 2. Call STT provider
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      const transcript = await sttTranscribe(audioBlob);
+      // Call STT provider
+      const transcript = await sttTranscribe(audioBlob as Blob | Buffer);
 
-      // 3. Append to conversation of current question segment (simplified)
-      let updatedSegments: any[] = [];
+      // Persist response (simplified – append to questionSegments conversation)
       try {
-        updatedSegments = Array.isArray(session.questionSegments)
-          ? (session.questionSegments as any[])
-          : JSON.parse(session.questionSegments as unknown as string);
-      } catch {
-        updatedSegments = [];
+        const qSegments = sessionRecord.questionSegments as unknown as QuestionSegment[];
+        const currentIdx = sessionRecord.currentQuestionIndex ?? 0;
+        const nowIso = new Date().toISOString();
+        if (qSegments[currentIdx]) {
+          qSegments[currentIdx].conversation.push({ role: 'user', content: transcript, timestamp: nowIso, messageType: 'transcript' } as unknown as ConversationTurn);
+        }
+        await db.sessionData.update({
+          where: { id: sessionId },
+          data: { questionSegments: JSON.parse(JSON.stringify(qSegments)) as any },
+        });
+      } catch (err) {
+        // Log and continue – persistence failures shouldn't break the mutation
+        console.error('Failed to persist transcript', err);
       }
-
-      const idx = session.currentQuestionIndex ?? 0;
-      if (!updatedSegments[idx]) {
-        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-        updatedSegments[idx] = { conversation: [] };
-      }
-      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-      if (!updatedSegments[idx].conversation) updatedSegments[idx].conversation = [];
-      updatedSegments[idx].conversation.push({
-        role: 'user',
-        content: transcript,
-        timestamp: new Date().toISOString(),
-      });
-
-      await ctx.db.sessionData.update({
-        where: { id: sessionId },
-        data: {
-          questionSegments: updatedSegments as any,
-        },
-      });
 
       return { transcript };
     }),

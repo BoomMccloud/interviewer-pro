@@ -12,6 +12,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Timer from '~/components/UI/Timer';
+import { openLiveInterviewSession, type LiveInterviewSession } from '~/lib/gemini';
+import { useRouter } from 'next/navigation';
 
 interface ConversationMessage {
   role: 'ai' | 'user';
@@ -56,9 +58,13 @@ export default function VoiceInterviewUI({
   const [error, setError] = useState<string | null>(null);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
+  const [socketReady, setSocketReady] = useState(false);
+  const liveSessionRef = useRef<LiveInterviewSession | null>(null);
+  const router = useRouter();
   
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const [questionText, setQuestionText] = useState(currentQuestion);
 
   // Initialize conversation history from sessionData
   useEffect(() => {
@@ -81,6 +87,32 @@ export default function VoiceInterviewUI({
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
       startRecording();
     }
+
+    // Open Gemini Live socket
+    void (async () => {
+      try {
+        const session = await openLiveInterviewSession('You are an interviewer');
+        liveSessionRef.current = session;
+        setSocketReady(true);
+
+        session.on('message', (msgOrErr) => {
+          if ('role' in msgOrErr) {
+            if (msgOrErr.role === 'ai') {
+              setQuestionText(msgOrErr.text);
+              setConversationHistory((prev) => [...prev, { role: 'ai', content: msgOrErr.text, timestamp: new Date().toISOString() }]);
+            } else {
+              setConversationHistory((prev) => [...prev, { role: 'user', content: msgOrErr.text, timestamp: new Date().toISOString() }]);
+              if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+            }
+          } else {
+            console.error('Live session error', msgOrErr);
+          }
+        });
+      } catch (err) {
+        console.error('Failed to open Gemini Live session', err);
+      }
+    })();
+
     // We intentionally run this effect only once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -133,6 +165,14 @@ export default function VoiceInterviewUI({
       if (durationIntervalRef.current) {
         clearInterval(durationIntervalRef.current);
         durationIntervalRef.current = null;
+      }
+
+      // Signal Gemini that user turn ended, unless we are already stopping
+      const stopFn = liveSessionRef.current?.stopTurn;
+      if (typeof stopFn === 'function') {
+        // Fire and forget; no need to await in UI thread
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        stopFn();
       }
     }
   };
@@ -223,7 +263,7 @@ export default function VoiceInterviewUI({
             </div>
             
             <h2 data-testid="current-question-text" className="text-xl font-semibold text-gray-900 dark:text-white leading-relaxed mb-4 p-4 bg-gray-50/30 dark:bg-slate-800/30 rounded-lg">
-              {currentQuestion || 'Loading next question...'}
+              {questionText || 'Loading next question...'}
             </h2>
             
             {/* Voice Guidance */}
@@ -350,6 +390,9 @@ export default function VoiceInterviewUI({
                 </div>
               </div>
             )}
+
+            {/* socket ready indicator for tests */}
+            {socketReady && <div data-testid="socket-open" className="sr-only" />}
           </div>
         </div>
 
@@ -409,13 +452,24 @@ export default function VoiceInterviewUI({
             </div>
             <div className="flex gap-3">
               <button
-                onClick={onPause}
-                className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                data-testid="next-question-btn"
+                onClick={() => {
+                  stopRecording();
+                }}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
               >
-                Pause
+                Next Question
               </button>
               <button
-                onClick={onEnd}
+                data-testid="end-interview-btn"
+                onClick={async () => {
+                  stopRecording();
+                  const closeFn = liveSessionRef.current?.close;
+                  if (typeof closeFn === 'function') {
+                    await closeFn();
+                  }
+                  router.push(`/sessions/${sessionData.sessionId}/report`);
+                }}
                 className="px-4 py-2 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
               >
                 End Interview
