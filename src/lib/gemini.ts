@@ -25,11 +25,13 @@ import type {
   OverallAssessment,
 } from '../types';
 
+import { env } from "~/env";
+
 // --- Configuration & Client Initialization ---
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
+const GEMINI_API_KEY = env.GEMINI_API_KEY;
 
 // Allow tests to run without API key when mocking
-const isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+const isTestEnvironment = env.NODE_ENV === 'test' || (process.env.JEST_WORKER_ID !== undefined);
 
 if (!GEMINI_API_KEY && !isTestEnvironment) {
   throw new Error("CRITICAL: GEMINI_API_KEY is not set.");
@@ -1086,28 +1088,61 @@ export async function openLiveInterviewSession(systemPrompt: string): Promise<Li
     close: [];
   }>();
 
+  // Guard-timer — automatically end the user's turn after 10 minutes
+  const MAX_ANSWER_MS = 10 * 60 * 1000;
+  let guardTimer: NodeJS.Timeout | undefined;
+  const startGuardTimer = () => {
+    guardTimer = setTimeout(() => {
+      // Fire-and-forget — we do not await to avoid unhandled-rejection
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      liveConnection.send?.({ audio: 'stop' });
+      // Optionally close the socket if the API supports it
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      liveConnection.close?.();
+    }, MAX_ANSWER_MS);
+  };
+  startGuardTimer();
+
+  const clearGuardTimer = () => {
+    if (guardTimer) {
+      clearTimeout(guardTimer);
+      guardTimer = undefined;
+    }
+  };
+
   // Emit ready event immediately so the UI can show a connected state
   emitter.emit('socket-open');
+
+  // Helper to extract text from multiple possible chunk shapes
+  const extractTextFromChunk = (chunk: any): string | undefined => {
+    if (chunk?.text) return chunk.text as string;
+    if (chunk?.serverContent?.modelTurn?.parts?.[0]?.text) {
+      return chunk.serverContent.modelTurn.parts[0].text as string;
+    }
+    return undefined;
+  };
 
   // Start listening for streamed responses
   void (async () => {
     try {
       for await (const chunk of liveConnection) {
-        if (chunk?.text) {
-          // Distinguish AI or user transcript based on Gemini chunk metadata.
-          const isTranscript = chunk.type === 'TRANSCRIPT' || chunk.role === 'user';
-          const role: 'ai' | 'user' = isTranscript ? 'user' : 'ai';
-          const payload: LiveInterviewMessage = { role, text: chunk.text };
+        const maybeText = extractTextFromChunk(chunk);
 
-          // Granular events
-          if (isTranscript) {
-            emitter.emit('transcript', payload);
-          } else {
-            emitter.emit('ai-message', payload);
-          }
-          // Legacy combined event
-          emitter.emit('message', payload);
+        if (!maybeText) continue;
+
+        // Determine transcript vs AI string message
+        const isTranscript = chunk.type === 'TRANSCRIPT' || chunk.role === 'user';
+        const role: 'ai' | 'user' = isTranscript ? 'user' : 'ai';
+        const payload: LiveInterviewMessage = { role, text: maybeText };
+
+        // Granular events
+        if (isTranscript) {
+          emitter.emit('transcript', payload);
+        } else {
+          emitter.emit('ai-message', payload);
         }
+        // Legacy combined event
+        emitter.emit('message', payload);
       }
       emitter.emit('close');
     } catch (err) {
@@ -1120,9 +1155,11 @@ export async function openLiveInterviewSession(systemPrompt: string): Promise<Li
       await liveConnection.send(chunk);
     },
     stopTurn: async () => {
+      clearGuardTimer();
       await liveConnection.send({ audio: 'stop' });
     },
     close: async () => {
+      clearGuardTimer();
       await liveConnection.close?.();
       emitter.emit('close');
     },

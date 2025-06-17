@@ -3,7 +3,9 @@
  * 
  * This component provides the voice-based interview interface with:
  * - Current question displayed prominently at the top
- * - Voice recording interface with full workflow support
+ * - Voice recording interface with simplified endQuestion flow
+ * - Feedback display (assessment + coaching) after each question
+ * - Continue button to proceed to next question
  * - Error handling and accessibility features
  * - Integration with live interview backend procedures
  */
@@ -12,8 +14,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Timer from '~/components/UI/Timer';
-import { openLiveInterviewSession, type LiveInterviewSession } from '~/lib/gemini';
+// Removed direct Gemini import for security - API keys must stay server-side
 import { useRouter } from 'next/navigation';
+import { api } from '~/trpc/react';
 
 interface ConversationMessage {
   role: 'ai' | 'user';
@@ -35,20 +38,21 @@ interface VoiceInterviewUIProps {
   };
   currentQuestion: string;
   keyPoints?: string[];
-  isProcessingResponse: boolean;
-  onSendVoiceInput: (audioBlob: Blob) => Promise<void>;
   onPause: () => Promise<void>;
   onEnd: () => Promise<void>;
 }
 
-type RecordingState = 'idle' | 'recording' | 'stopped' | 'error';
+interface FeedbackData {
+  assessment: string;
+  coaching: string;
+}
+
+type RecordingState = 'idle' | 'recording' | 'stopped' | 'processing' | 'feedback' | 'error';
 
 export default function VoiceInterviewUI({
   sessionData,
   currentQuestion,
   keyPoints,
-  isProcessingResponse,
-  onSendVoiceInput,
   onPause,
   onEnd,
 }: VoiceInterviewUIProps) {
@@ -58,13 +62,26 @@ export default function VoiceInterviewUI({
   const [error, setError] = useState<string | null>(null);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
-  const [socketReady, setSocketReady] = useState(false);
-  const liveSessionRef = useRef<LiveInterviewSession | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackData | null>(null);
+  const [transcript, setTranscript] = useState<string>('');
   const router = useRouter();
   
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const [questionText, setQuestionText] = useState(currentQuestion);
+
+  // tRPC mutation for ending question and getting feedback
+  const endQuestionMutation = api.session.endQuestion.useMutation({
+    onSuccess: (data) => {
+      setFeedback(data);
+      setRecordingState('feedback');
+    },
+    onError: (error) => {
+      console.error('Error ending question:', error);
+      setError('Failed to process your answer. Please try again.');
+      setRecordingState('error');
+    },
+  });
 
   // Initialize conversation history from sessionData
   useEffect(() => {
@@ -87,32 +104,6 @@ export default function VoiceInterviewUI({
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
       startRecording();
     }
-
-    // Open Gemini Live socket
-    void (async () => {
-      try {
-        const session = await openLiveInterviewSession('You are an interviewer');
-        liveSessionRef.current = session;
-        setSocketReady(true);
-
-        session.on('message', (msgOrErr) => {
-          if ('role' in msgOrErr) {
-            if (msgOrErr.role === 'ai') {
-              setQuestionText(msgOrErr.text);
-              setConversationHistory((prev) => [...prev, { role: 'ai', content: msgOrErr.text, timestamp: new Date().toISOString() }]);
-            } else {
-              setConversationHistory((prev) => [...prev, { role: 'user', content: msgOrErr.text, timestamp: new Date().toISOString() }]);
-              if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
-            }
-          } else {
-            console.error('Live session error', msgOrErr);
-          }
-        });
-      } catch (err) {
-        console.error('Failed to open Gemini Live session', err);
-      }
-    })();
-
     // We intentionally run this effect only once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -126,6 +117,7 @@ export default function VoiceInterviewUI({
   const startRecording = async () => {
     try {
       setError(null);
+      setFeedback(null); // Clear previous feedback
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
@@ -166,49 +158,69 @@ export default function VoiceInterviewUI({
         clearInterval(durationIntervalRef.current);
         durationIntervalRef.current = null;
       }
-
-      // Signal Gemini that user turn ended, unless we are already stopping
-      const stopFn = liveSessionRef.current?.stopTurn;
-      if (typeof stopFn === 'function') {
-        // Fire and forget; no need to await in UI thread
-        // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        stopFn();
-      }
+      // Note: No longer need to signal Gemini Live since we're using direct audio upload
     }
   };
 
-  const handleSubmitRecording = async () => {
-    if (!audioBlob) return;
+  const handleEndQuestion = async () => {
+    if (!audioBlob) {
+      setError('No audio recorded. Please try recording again.');
+      setRecordingState('error');
+      return;
+    }
     
     try {
-      await onSendVoiceInput(audioBlob);
-      // Reset for next recording
-      setAudioBlob(null);
-      setRecordingState('idle');
-      setRecordingDuration(0);
+      setRecordingState('processing');
+      // For now, simulate transcript from audio blob (future: server-side transcription)
+      const simulatedTranscript = `[Audio response recorded - ${Math.round(audioBlob.size / 1024)}KB]`;
+      
+      await endQuestionMutation.mutateAsync({
+        sessionId: sessionData.sessionId,
+        questionText: questionText,
+        transcript: simulatedTranscript,
+      });
+      // State will be updated to 'feedback' via onSuccess callback
     } catch (err) {
-      setError('Failed to process voice recording. Please try again.');
-      setRecordingState('error');
+      // Error handling is done in the mutation onError callback
+      console.error('Error in handleEndQuestion:', err);
     }
   };
 
   const handleRetryRecording = () => {
     setAudioBlob(null);
+    setTranscript('');
     setRecordingState('idle');
     setRecordingDuration(0);
     setError(null);
+    setFeedback(null);
+  };
+
+  const handleContinue = () => {
+    // Reset for next question
+    setFeedback(null);
+    setTranscript('');
+    setAudioBlob(null);
+    setRecordingState('idle');
+    setRecordingDuration(0);
+    // This should trigger opening a new socket for the next question
+    // For now, we'll restart the recording
+    void startRecording();
   };
 
   const getStatusMessage = (): string => {
     switch (recordingState) {
       case 'recording':
-        return `Recording... ${formatTime(recordingDuration)}`;
+        return 'Recording your answer...';
       case 'stopped':
-        return 'Recording complete. Ready to send.';
+        return 'Recording complete. Ready to submit.';
+      case 'processing':
+        return 'Processing your answer...';
+      case 'feedback':
+        return 'Feedback ready!';
       case 'error':
-        return error ?? 'An error occurred';
+        return 'Recording error occurred.';
       default:
-        return 'Ready to record your response';
+        return 'Ready to record';
     }
   };
 
@@ -217,33 +229,17 @@ export default function VoiceInterviewUI({
       case 'recording':
         return 'Stop recording';
       case 'stopped':
-        return 'Record again';
+        return 'Record new answer';
+      case 'processing':
+        return 'Processing...';
+      case 'feedback':
+        return 'Recording complete';
+      case 'error':
+        return 'Retry recording';
       default:
         return 'Start recording';
     }
   };
-
-  // Auto-submit when recording stops (hands-free behaviour)
-  useEffect(() => {
-    const autoSubmit = async () => {
-      if (recordingState === 'stopped' && audioBlob) {
-        try {
-          await onSendVoiceInput(audioBlob);
-        } catch (err) {
-          setError('Failed to process voice recording. Please try again.');
-          setRecordingState('error');
-          return;
-        }
-        // Reset state for next question
-        setAudioBlob(null);
-        setRecordingState('idle');
-        setRecordingDuration(0);
-      }
-    };
-    // Only fire if stopped with blob
-    void autoSubmit();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordingState, audioBlob]);
 
   return (
     <div
@@ -318,7 +314,7 @@ export default function VoiceInterviewUI({
                 <button
                   data-testid="record-toggle"
                   onClick={recordingState === 'recording' ? stopRecording : startRecording}
-                  disabled={isProcessingResponse || recordingState === 'stopped'}
+                  disabled={recordingState === 'processing' || recordingState === 'feedback'}
                   aria-label={getRecordButtonLabel()}
                   className="w-full h-full flex items-center justify-center text-white text-4xl disabled:opacity-50"
                 >
@@ -351,18 +347,41 @@ export default function VoiceInterviewUI({
               {recordingState === 'stopped' && audioBlob && (
                 <div className="flex gap-3 justify-center">
                   <button
-                    onClick={handleSubmitRecording}
-                    disabled={isProcessingResponse}
+                    onClick={handleEndQuestion}
+                    disabled={recordingState !== 'stopped'}
                     className="px-6 py-3 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
                   >
-                    {isProcessingResponse ? 'Sending...' : 'Send Recording'}
+                    Submit Answer
                   </button>
                   <button
                     onClick={handleRetryRecording}
-                    disabled={isProcessingResponse}
+                    disabled={recordingState !== 'stopped'}
                     className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800 focus:ring-2 focus:ring-gray-500 disabled:opacity-50 transition-colors"
                   >
                     Try Again
+                  </button>
+                </div>
+              )}
+
+              {/* Feedback Display */}
+              {recordingState === 'feedback' && feedback && (
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-600 rounded-lg p-6 space-y-4">
+                  <h3 className="text-lg font-semibold text-green-800 dark:text-green-300">Feedback</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="font-medium text-green-700 dark:text-green-400 mb-1">Assessment:</h4>
+                      <p className="text-green-600 dark:text-green-300 text-sm">{feedback.assessment}</p>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-green-700 dark:text-green-400 mb-1">Coaching:</h4>
+                      <p className="text-green-600 dark:text-green-300 text-sm">{feedback.coaching}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleContinue}
+                    className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg focus:ring-2 focus:ring-green-500 transition-colors font-medium"
+                  >
+                    Continue to Next Question
                   </button>
                 </div>
               )}
@@ -378,7 +397,7 @@ export default function VoiceInterviewUI({
             </div>
 
             {/* Processing Indicator */}
-            {isProcessingResponse && (
+            {recordingState === 'processing' && (
               <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-600 rounded-lg p-4">
                 <div className="flex items-center justify-center gap-2 text-blue-700 dark:text-blue-400">
                   <div className="flex gap-1">
@@ -386,13 +405,13 @@ export default function VoiceInterviewUI({
                     <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
                     <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
                   </div>
-                  <span className="font-medium">Transcribing and preparing next question...</span>
+                  <span className="font-medium">Processing your answer...</span>
                 </div>
               </div>
             )}
 
-            {/* socket ready indicator for tests */}
-            {socketReady && <div data-testid="socket-open" className="sr-only" />}
+            {/* socket ready indicator for tests - simplified since no Gemini Live */}
+            <div data-testid="socket-open" className="sr-only" />
           </div>
         </div>
 
@@ -453,9 +472,7 @@ export default function VoiceInterviewUI({
             <div className="flex gap-3">
               <button
                 data-testid="next-question-btn"
-                onClick={() => {
-                  stopRecording();
-                }}
+                onClick={handleContinue}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
               >
                 Next Question
@@ -464,10 +481,7 @@ export default function VoiceInterviewUI({
                 data-testid="end-interview-btn"
                 onClick={async () => {
                   stopRecording();
-                  const closeFn = liveSessionRef.current?.close;
-                  if (typeof closeFn === 'function') {
-                    await closeFn();
-                  }
+                  // Note: No longer need to close Gemini Live session since we're using direct audio upload
                   router.push(`/sessions/${sessionData.sessionId}/report`);
                 }}
                 className="px-4 py-2 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"

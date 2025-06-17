@@ -229,6 +229,65 @@ export const sessionRouter = createTRPCRouter({
   // Question Generation API - Modality Agnostic
   // ==========================================
 
+  // ------------------------------------------
+  // Voice: End Question (save feedback)
+  // ------------------------------------------
+  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+  endQuestion: protectedProcedure
+    .input(z.object({
+      sessionId: z.string(),
+      questionText: z.string(),
+      transcript: z.string().min(2, 'Transcript too short'),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { sessionId, questionText, transcript } = input;
+
+      // Fetch session and verify ownership
+      const session = await db.sessionData.findUnique({
+        where: { id: sessionId, userId: ctx.session.user.id },
+      });
+
+      if (!session) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' });
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
+      const segments: Record<string, unknown>[] = Array.isArray(session.questionSegments)
+        ? (session.questionSegments as unknown as Record<string, unknown>[])
+        : JSON.parse(session.questionSegments as unknown as string);
+
+      const idx = segments.findIndex((s) => s.question === questionText);
+      const targetSeg = idx >= 0 ? segments[idx] : null;
+
+      // Simple placeholder – in production call LLM helper
+      const assessment = 'Pending';
+      const coaching = 'Feedback will be generated soon.';
+
+      const feedbackObj = {
+        assessment,
+        coaching,
+        transcript,
+        endTime: new Date().toISOString(),
+      };
+
+      if (targetSeg) {
+        targetSeg.feedback = feedbackObj;
+      } else {
+        segments.push({
+          question: questionText,
+          feedback: feedbackObj,
+        });
+      }
+
+      await db.sessionData.update({
+        where: { id: sessionId },
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unnecessary-type-assertion
+        data: { questionSegments: segments as unknown as Prisma.InputJsonValue },
+      });
+
+      return { assessment, coaching };
+    }),
+
   generateInterviewQuestion: protectedProcedure
     .input(z.object({
       jdResumeTextId: z.string(),
@@ -239,7 +298,6 @@ export const sessionRouter = createTRPCRouter({
     }))
     .query(async ({ input, ctx }) => {
       // ✨ NEW: Use the shared question generation helper function
-      // This ensures consistency between standalone and session-based question generation
       return await generateQuestionForSession(
         input.jdResumeTextId,
         input.personaId,

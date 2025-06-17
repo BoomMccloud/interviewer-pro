@@ -190,7 +190,6 @@ async function seedMockData() {
         endTime: new Date(),
         questionSegments: mockQuestionSegments as unknown as Prisma.InputJsonValue,
         currentQuestionIndex: mockQuestionSegments.length - 1,
-        // @ts-expect-error - Prisma types might be stale in the linter
         overallAssessment: {
             summary: 'The candidate showed strong potential and a good grasp of core concepts, but could improve on the clarity and structure of their answers.',
             strengths: ['Good understanding of database optimization.', 'Proactive in asking clarifying questions.'],

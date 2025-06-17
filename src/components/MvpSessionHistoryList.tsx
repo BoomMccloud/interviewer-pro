@@ -45,8 +45,6 @@ export default function MvpSessionHistoryList({
     return 'In Progress';
   };
 
-
-
   const handleSessionClick = (sessionId: string) => {
     if (onSessionClick) {
       onSessionClick(sessionId);
@@ -92,7 +90,7 @@ export default function MvpSessionHistoryList({
                 Interview Session
               </h3>
               <p className="text-sm text-gray-600 dark:text-gray-300">
-                {formatDate(session.startTime)}
+                {session.startTime ? formatDate(session.startTime) : 'Not started'}
               </p>
             </div>
             <div className="text-right">
@@ -110,7 +108,7 @@ export default function MvpSessionHistoryList({
 
           <div className="flex justify-between items-center text-sm text-gray-600 dark:text-gray-300">
             <div className="flex gap-4">
-              {session.endTime && (
+              {session.endTime && session.startTime && (
                 <span>
                   Duration: {formatDuration(Math.floor((new Date(session.endTime).getTime() - new Date(session.startTime).getTime()) / 1000))}
                 </span>
@@ -130,12 +128,6 @@ export default function MvpSessionHistoryList({
               </svg>
             </div>
           </div>
-
-          {session.overallSummary && (
-            <div className="mt-2 text-sm text-gray-700 bg-gray-50 p-2 rounded">
-              <p className="line-clamp-2">{session.overallSummary}</p>
-            </div>
-          )}
         </div>
       ))}
     </div>

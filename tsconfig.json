@@ -38,5 +38,8 @@
     "**/*.js",
     ".next/types/**/*.ts"
 , "src/lib/gemini-voice-proposal.bak", "src/lib/gemini-voice-analysis.bak"  ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "project_planning"
+  ]
 }
