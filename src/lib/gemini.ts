@@ -1216,9 +1216,14 @@ export async function generateEphemeralToken(config: EphemeralTokenConfig = {}):
   const newSessionExpireTime = new Date(now.getTime() + 60 * 1000); // 1 minute window to start sessions
 
   try {
-    // Generate ephemeral token using GoogleGenAI SDK
-    // Note: Using 'as any' temporarily until SDK types are updated
-    const tokenResponse = await (genAI as any).authTokens.create({
+    // Access the authTokens API (alpha feature)
+    const authTokensAPI = (genAI as any).authTokens;
+    if (!authTokensAPI || typeof authTokensAPI.create !== 'function') {
+      throw new Error('Ephemeral tokens are not available in this SDK version. Please upgrade to a newer version of @google/genai.');
+    }
+
+    // Generate ephemeral token using GoogleGenAI SDK (following official sample)
+    const tokenResponse = await authTokensAPI.create({
       config: {
         uses, // Single use token for security
         expireTime: expiresAt.toISOString(),
@@ -1233,13 +1238,21 @@ export async function generateEphemeralToken(config: EphemeralTokenConfig = {}):
       sessionWindowExpires: newSessionExpireTime.toISOString(),
     };
   } catch (error: unknown) {
+    console.error('Ephemeral token generation failed:', error);
+    
     // Enhanced error handling for different types of failures
     if (error instanceof Error) {
+      if (error.message.includes('not available') || error.message.includes('authTokens')) {
+        throw new Error('Ephemeral tokens are not supported in this SDK version. Please upgrade to Google AI SDK with ephemeral token support.');
+      }
       if (error.message.includes('quota')) {
         throw new Error('API quota exceeded. Please try again later.');
       }
-      if (error.message.includes('authentication')) {
+      if (error.message.includes('authentication') || error.message.includes('API key')) {
         throw new Error('Invalid API key configuration');
+      }
+      if (error.message.includes('permission') || error.message.includes('access')) {
+        throw new Error('API key does not have permission for ephemeral token generation');
       }
     }
     
