@@ -14,6 +14,7 @@ import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { GoogleGenAI, Modality, type LiveSendRealtimeInputParameters } from '@google/genai';
 import Timer from '~/components/UI/Timer';
+import { api } from '~/utils/api';
 
 // Type guards for Gemini Live API responses
 interface GeminiAudioPart {
@@ -108,6 +109,9 @@ export default function LiveVoiceInterviewUI({
   const [isRecording, setIsRecording] = useState(false);
   const router = useRouter();
 
+  // tRPC mutation for generating ephemeral tokens
+  const generateToken = api.session.generateEphemeralToken.useMutation();
+
   // Audio and Gemini refs
   const clientRef = useRef<GoogleGenAI | null>(null);
   const sessionRef = useRef<{ sendRealtimeInput: (input: LiveSendRealtimeInputParameters) => void; close: () => void } | null>(null);
@@ -118,22 +122,43 @@ export default function LiveVoiceInterviewUI({
   const nextStartTimeRef = useRef<number>(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
 
-  // Initialize client AND session immediately (like working example)
+  // Initialize client with secure ephemeral token
   const initClient = async () => {
-    await initAudio();
+    try {
+      setUIState('loading');
+      setError(null);
 
-    clientRef.current = new GoogleGenAI({
-      apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY!,
-    });
+      // Step 1: Generate ephemeral token securely on the server
+      console.log('[LiveVoiceUI] 🔐 Generating ephemeral token...');
+      const tokenResponse = await generateToken.mutateAsync({
+        sessionId: sessionData.sessionId,
+        ttlMinutes: 30, // 30 minutes should be enough for most interviews
+      });
 
-    if (outputNodeRef.current && outputAudioContextRef.current) {
-      outputNodeRef.current.connect(outputAudioContextRef.current.destination);
+      console.log('[LiveVoiceUI] ✅ Ephemeral token generated, expires:', tokenResponse.expiresAt);
+      // Token used immediately, no need to store in state
+
+      // Step 2: Initialize audio
+      await initAudio();
+
+      // Step 3: Initialize Gemini client with ephemeral token (secure!)
+      clientRef.current = new GoogleGenAI({
+        apiKey: tokenResponse.token, // Use ephemeral token instead of exposed API key
+      });
+
+      if (outputNodeRef.current && outputAudioContextRef.current) {
+        outputNodeRef.current.connect(outputAudioContextRef.current.destination);
+      }
+
+      // Step 4: Create live session
+      await initSession();
+      setUIState('interviewing');
+    } catch (err) {
+      console.error('[LiveVoiceUI] ❌ Failed to initialize client:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to initialize voice interview';
+      setError(errorMessage);
+      setUIState('error');
     }
-
-    // Create session immediately like working example
-    setUIState('loading');
-    await initSession();
-    setUIState('interviewing');
   };
 
   const initAudio = async () => {
@@ -389,8 +414,11 @@ export default function LiveVoiceInterviewUI({
   const getStatusMessage = (): string => {
     switch (uiState) {
       case 'waiting_to_start':
-        return 'Ready to start your live interview';
+        return 'Ready to start your secure live interview';
       case 'loading':
+        if (generateToken.isPending) {
+          return 'Generating secure connection token...';
+        }
         return 'Connecting to interview system...';
       case 'interviewing':
         return isAISpeaking ? 'Interviewer is speaking...' : 'Listening to your response...';
@@ -566,7 +594,16 @@ export default function LiveVoiceInterviewUI({
             {uiState === 'loading' && (
               <div className="text-center">
                 <div className="text-blue-600 dark:text-blue-400 font-medium">
-                  Initializing your live interview session...
+                  {generateToken.isPending 
+                    ? '🔐 Generating secure connection token...' 
+                    : '🎙️ Initializing your live interview session...'
+                  }
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                  {generateToken.isPending 
+                    ? 'Creating secure, temporary access credentials'
+                    : 'Connecting to Gemini Live API with ephemeral token'
+                  }
                 </div>
               </div>
             )}
@@ -583,7 +620,24 @@ export default function LiveVoiceInterviewUI({
             {error && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-600 rounded-lg p-4">
                 <div className="text-red-700 dark:text-red-400 text-sm text-center">
-                  {error}
+                  <div className="font-medium mb-2">❌ {error}</div>
+                  {error.includes('token') && (
+                    <div className="text-xs text-red-600 dark:text-red-300">
+                      This could be due to session expiry or API limitations. Please refresh and try again.
+                    </div>
+                  )}
+                  <div className="mt-3">
+                    <button
+                      onClick={() => {
+                        setError(null);
+                        generateToken.reset(); // Clear tRPC mutation state
+                        setUIState('waiting_to_start');
+                      }}
+                      className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm underline"
+                    >
+                      Try Again
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

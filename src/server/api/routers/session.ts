@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
-import { getFirstQuestion, continueConversation, getNewTopicalQuestion } from "~/lib/gemini";
+import { getFirstQuestion, continueConversation, getNewTopicalQuestion, generateEphemeralToken } from "~/lib/gemini";
 import { getPersona } from "~/lib/personaService";
 import { GoogleGenAI } from '@google/genai';
 import type { 
@@ -931,62 +931,77 @@ export const sessionRouter = createTRPCRouter({
       return { transcript };
     }),
 
+  /**
+   * Generate ephemeral token for secure client-side Live API access
+   * 
+   * Eliminates the need to expose GEMINI_API_KEY in the frontend by generating
+   * short-lived tokens that can be safely used in browsers.
+   * 
+   * @see https://ai.google.dev/gemini-api/docs/ephemeral-tokens#javascript
+   */
   generateEphemeralToken: protectedProcedure
     .input(z.object({
-      sessionId: z.string(),
-      ttlMinutes: z.number().optional().default(35),
+      sessionId: z.string().min(1, 'Session ID is required'),
+      ttlMinutes: z.number().min(1).max(120).optional().default(35), // Max 2 hours
     }))
     .mutation(async ({ ctx, input }) => {
       const { sessionId, ttlMinutes } = input;
 
       // Validate user owns the session
-      const session = await db.sessionData.findUnique({
+      const session = await ctx.db.sessionData.findUnique({
         where: { 
           id: sessionId,
-          userId: ctx.session.user.id, // Ensure user owns this session
+          userId: ctx.session.user.id,
         },
+        select: { id: true }, // Only select what we need for authorization
       });
 
       if (!session) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: 'Session not found or not authorized',
+          message: 'Session not found or access denied',
         });
       }
 
-      // Initialize GoogleGenAI client
-      const genAI = new GoogleGenAI({
-        apiKey: env.GEMINI_API_KEY || 'test-key-for-mocking',
-      });
-
-      // Calculate expiration times
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000);
-      const newSessionExpireTime = new Date(now.getTime() + 60 * 1000); // 1 minute window
-
       try {
-        // Generate ephemeral token using GoogleGenAI
-        // Following the official documentation pattern from:
-        // https://ai.google.dev/gemini-api/docs/ephemeral-tokens#javascript
-        const tokenResponse = await (genAI as any).authTokens.create({
-          config: {
-            uses: 1,
-            expireTime: expiresAt.toISOString(),
-            newSessionExpireTime: newSessionExpireTime.toISOString(),
-            httpOptions: { apiVersion: 'v1alpha' }
-          }
+        // Use the utility function for token generation
+        const tokenResponse = await generateEphemeralToken({ 
+          ttlMinutes,
+          uses: 1 
         });
 
-        // Extract token name from response
-        const token = tokenResponse.name;
-
-        return {
-          token,
-          expiresAt: expiresAt.toISOString(),
-        };
-      } catch (error) {
-        // Re-throw the original error for proper error handling
-        throw error;
+        return tokenResponse;
+      } catch (error: unknown) {
+        // Enhanced error handling with proper tRPC error codes
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        
+        if (errorMessage.includes('quota')) {
+          throw new TRPCError({
+            code: 'TOO_MANY_REQUESTS',
+            message: 'API quota exceeded. Please try again later.',
+          });
+        }
+        
+        if (errorMessage.includes('authentication') || errorMessage.includes('API key')) {
+          throw new TRPCError({
+            code: 'UNAUTHORIZED',
+            message: 'Invalid API key configuration',
+          });
+        }
+        
+        if (errorMessage.includes('not configured')) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Gemini API key not configured',
+          });
+        }
+        
+        // Re-throw as internal server error for unexpected errors
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to generate ephemeral token',
+          cause: error,
+        });
       }
     }),
 });

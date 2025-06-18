@@ -26,6 +26,7 @@ import type {
 } from '../types';
 
 import { env } from "~/env";
+import { getPersona } from './personaService';
 
 // --- Configuration & Client Initialization ---
 const GEMINI_API_KEY = env.GEMINI_API_KEY;
@@ -1168,4 +1169,81 @@ export async function openLiveInterviewSession(systemPrompt: string): Promise<Li
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     off: (event, cb) => emitter.off(event as any, cb as any),
   };
+}
+
+/**
+ * Ephemeral Token Configuration Interface
+ */
+export interface EphemeralTokenConfig {
+  ttlMinutes?: number;
+  uses?: number;
+}
+
+/**
+ * Ephemeral Token Response Interface
+ */
+export interface EphemeralTokenResponse {
+  token: string;
+  expiresAt: string;
+  sessionWindowExpires: string;
+}
+
+/**
+ * Generate ephemeral token for secure client-side Live API access
+ * 
+ * @param config - Token configuration options
+ * @returns Ephemeral token with expiration details
+ * @throws Error if token generation fails
+ * 
+ * @see https://ai.google.dev/gemini-api/docs/ephemeral-tokens#javascript
+ */
+export async function generateEphemeralToken(config: EphemeralTokenConfig = {}): Promise<EphemeralTokenResponse> {
+  const { ttlMinutes = 35, uses = 1 } = config;
+
+  // Validate API key is available
+  if (!env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is not configured');
+  }
+
+  // Initialize GoogleGenAI client
+  const genAI = new GoogleGenAI({
+    apiKey: env.GEMINI_API_KEY,
+  });
+
+  // Calculate expiration times based on Google's recommendations
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000);
+  const newSessionExpireTime = new Date(now.getTime() + 60 * 1000); // 1 minute window to start sessions
+
+  try {
+    // Generate ephemeral token using GoogleGenAI SDK
+    // Note: Using 'as any' temporarily until SDK types are updated
+    const tokenResponse = await (genAI as any).authTokens.create({
+      config: {
+        uses, // Single use token for security
+        expireTime: expiresAt.toISOString(),
+        newSessionExpireTime: newSessionExpireTime.toISOString(),
+        httpOptions: { apiVersion: 'v1alpha' }
+      }
+    });
+
+    return {
+      token: tokenResponse.name,
+      expiresAt: expiresAt.toISOString(),
+      sessionWindowExpires: newSessionExpireTime.toISOString(),
+    };
+  } catch (error: unknown) {
+    // Enhanced error handling for different types of failures
+    if (error instanceof Error) {
+      if (error.message.includes('quota')) {
+        throw new Error('API quota exceeded. Please try again later.');
+      }
+      if (error.message.includes('authentication')) {
+        throw new Error('Invalid API key configuration');
+      }
+    }
+    
+    // Re-throw as general error for unexpected errors
+    throw new Error(`Failed to generate ephemeral token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
