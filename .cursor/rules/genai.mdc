@@ -58,5 +58,6 @@ for await (const chunk of streamingResult.stream) { // or streamingResult direct
 ```
 
 **Important Note on `getGenerativeModel`:**
-While the `@google/genai` SDK also provides a `genAI.getGenerativeModel({ model: "..." })` method to get a model instance first, **`interviewer-pro` has standardized on using `genAI.models.generateContentStream(...)` directly.** Therefore, for consistency within this project, avoid using `getGenerativeModel`.
-The `GoogleGenAI` class itself is the correct primary entry point from the library.
+- While the `@google/genai` SDK also provides a `genAI.getGenerativeModel({ model: "..." })` method to get a model instance first, **`interviewer-pro` has standardized on using `genAI.models.generateContentStream(...)` directly.** Therefore, for consistency within this project, avoid using `getGenerativeModel`.
+- The `GoogleGenAI` class itself is the correct primary entry point from the library.
+- Gemini-2.5-flash-preview-native-audio-dialog is not the wrong model
