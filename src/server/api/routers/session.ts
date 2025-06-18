@@ -6,6 +6,7 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { db } from "~/server/db";
 import { getFirstQuestion, continueConversation, getNewTopicalQuestion } from "~/lib/gemini";
 import { getPersona } from "~/lib/personaService";
+import { GoogleGenAI } from '@google/genai';
 import type { 
   MvpSessionTurn, 
   // SessionReportData,     // REMOVED: Deprecated with legacy procedures
@@ -22,6 +23,7 @@ import {
 import type { Prisma } from '@prisma/client'; // Changed to type import
 import { TRPCError } from "@trpc/server";
 import { transcribe as sttTranscribe } from "~/lib/speechService";
+import { env } from "~/env";
 
 /* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
 /**
@@ -927,6 +929,65 @@ export const sessionRouter = createTRPCRouter({
       }
 
       return { transcript };
+    }),
+
+  generateEphemeralToken: protectedProcedure
+    .input(z.object({
+      sessionId: z.string(),
+      ttlMinutes: z.number().optional().default(35),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { sessionId, ttlMinutes } = input;
+
+      // Validate user owns the session
+      const session = await db.sessionData.findUnique({
+        where: { 
+          id: sessionId,
+          userId: ctx.session.user.id, // Ensure user owns this session
+        },
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Session not found or not authorized',
+        });
+      }
+
+      // Initialize GoogleGenAI client
+      const genAI = new GoogleGenAI({
+        apiKey: env.GEMINI_API_KEY || 'test-key-for-mocking',
+      });
+
+      // Calculate expiration times
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000);
+      const newSessionExpireTime = new Date(now.getTime() + 60 * 1000); // 1 minute window
+
+      try {
+        // Generate ephemeral token using GoogleGenAI
+        // Following the official documentation pattern from:
+        // https://ai.google.dev/gemini-api/docs/ephemeral-tokens#javascript
+        const tokenResponse = await (genAI as any).authTokens.create({
+          config: {
+            uses: 1,
+            expireTime: expiresAt.toISOString(),
+            newSessionExpireTime: newSessionExpireTime.toISOString(),
+            httpOptions: { apiVersion: 'v1alpha' }
+          }
+        });
+
+        // Extract token name from response
+        const token = tokenResponse.name;
+
+        return {
+          token,
+          expiresAt: expiresAt.toISOString(),
+        };
+      } catch (error) {
+        // Re-throw the original error for proper error handling
+        throw error;
+      }
     }),
 });
 
