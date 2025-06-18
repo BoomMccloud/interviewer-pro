@@ -57,10 +57,10 @@ export class GeminiLiveInterviewService {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     this.inputAudioContext = new AudioContextClass({
       sampleRate: 16000
-    }) as AudioContext;
+    });
     this.outputAudioContext = new AudioContextClass({
       sampleRate: 24000
-    }) as AudioContext;
+    });
     
     this.outputNode = this.outputAudioContext.createGain();
     this.outputNode.connect(this.outputAudioContext.destination);
@@ -295,13 +295,17 @@ Remember: Start immediately with the greeting and question above. Do not wait fo
         const pcmData = inputBuffer.getChannelData(0);
         
         // Send audio data as blob like the working example
-        this.session.sendRealtimeInput({
-          media: this.createAudioBlob(pcmData)
-        });
+        if (this.session) {
+          this.session.sendRealtimeInput({
+            media: this.createAudioBlob(pcmData)
+          });
+        }
       };
 
-      this.sourceNode.connect(this.scriptProcessorNode);
-      this.scriptProcessorNode.connect(this.inputAudioContext.destination);
+      if (this.sourceNode && this.scriptProcessorNode && this.inputAudioContext) {
+        this.sourceNode.connect(this.scriptProcessorNode);
+        this.scriptProcessorNode.connect(this.inputAudioContext.destination);
+      }
 
     } catch (error) {
       console.error('Failed to start audio capture:', error);
@@ -314,7 +318,10 @@ Remember: Start immediately with the greeting and question above. Do not wait fo
     // Convert Float32Array to Int16Array like the working example
     const int16Data = new Int16Array(pcmData.length);
     for (let i = 0; i < pcmData.length; i++) {
-      int16Data[i] = Math.max(-32768, Math.min(32767, pcmData[i] * 32768));
+      const sample = pcmData[i];
+      if (sample !== undefined) {
+        int16Data[i] = Math.max(-32768, Math.min(32767, sample * 32768));
+      }
     }
     
     // Create blob from the Int16Array buffer using GeminiBlob type

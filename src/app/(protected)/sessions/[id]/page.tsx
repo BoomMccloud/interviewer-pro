@@ -1,13 +1,11 @@
 'use client';
 
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '~/trpc/react';
 import TextInterviewUI from '~/components/Sessions/InterviewUI/TextInterviewUI';
 import LiveVoiceInterviewUI from '~/components/Sessions/InterviewUI/LiveVoiceInterviewUI';
-import { INTERVIEW_MODES, SESSION_STATES, PERSONA_IDS } from '~/types';
-import type { InterviewMode, SessionState, GeneratedQuestion, PersonaId } from '~/types';
-import { getPersona } from '~/lib/personaService';
+import type { InterviewMode } from '~/types';
 
 export default function SessionPage() {
   const params = useParams();
@@ -85,16 +83,16 @@ export default function SessionPage() {
   // Prepare session data for components
   const sessionData = {
     sessionId: session.id,
-    history: session.conversationHistory || [],
-    currentQuestion: session.currentQuestion || 'Loading next question...',
-    keyPoints: session.keyPoints || [],
+    history: [], // TODO: Extract from questionSegments
+    currentQuestion: 'Loading next question...', // TODO: Extract from questionSegments
+    keyPoints: [], // TODO: Extract from questionSegments or persona
     status: session.status as 'active' | 'paused' | 'completed',
     startTime: session.startTime,
-    personaName: session.personaId ? getPersona(session.personaId as PersonaId)?.name : undefined,
-    personaId: session.personaId || 'default',
+    personaName: session.personaId ? `Persona: ${session.personaId}` : undefined,
+    personaId: session.personaId ?? 'default',
     isActive: session.status === 'active',
-    conversationHistory: session.conversationHistory || [],
-    questionNumber: session.questionNumber || 1,
+    conversationHistory: [], // TODO: Extract from questionSegments
+    questionNumber: session.currentQuestionIndex ?? 1,
     timeRemaining: 3600, // Default 1 hour
   };
 

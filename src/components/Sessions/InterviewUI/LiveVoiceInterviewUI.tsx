@@ -10,10 +10,57 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI, Modality, type LiveSendRealtimeInputParameters } from '@google/genai';
 import Timer from '~/components/UI/Timer';
+
+// Type guards for Gemini Live API responses
+interface GeminiAudioPart {
+  inlineData?: {
+    data: string;
+    mimeType: string;
+  };
+  text?: string;
+}
+
+interface GeminiMessage {
+  serverContent?: {
+    modelTurn?: {
+      parts?: GeminiAudioPart[];
+    };
+    turnComplete?: boolean;
+    interrupted?: boolean;
+  };
+  message?: string;
+}
+
+const isValidGeminiMessage = (message: unknown): message is GeminiMessage => {
+  return typeof message === 'object' && message !== null;
+};
+
+const hasAudioPart = (part: unknown): part is GeminiAudioPart => {
+  if (typeof part !== 'object' || part === null || !('inlineData' in part)) {
+    return false;
+  }
+  const partObj = part as Record<string, unknown>;
+  const inlineData = partObj.inlineData;
+  
+  return typeof inlineData === 'object' && 
+         inlineData !== null &&
+         'data' in inlineData &&
+         'mimeType' in inlineData &&
+         typeof (inlineData as Record<string, unknown>).data === 'string' &&
+         typeof (inlineData as Record<string, unknown>).mimeType === 'string';
+};
+
+const hasTextPart = (part: unknown): part is { text: string } => {
+  if (typeof part !== 'object' || part === null || !('text' in part)) {
+    return false;
+  }
+  const partObj = part as Record<string, unknown>;
+  return typeof partObj.text === 'string';
+};
 
 interface LiveVoiceInterviewUIProps {
   sessionData: {
@@ -35,7 +82,10 @@ const convertToBase64PCM = (pcmData: Float32Array): string => {
   // Convert Float32Array to Int16Array for PCM 16-bit
   const int16Data = new Int16Array(pcmData.length);
   for (let i = 0; i < pcmData.length; i++) {
-    int16Data[i] = Math.max(-32768, Math.min(32767, pcmData[i] * 32768));
+    const sample = pcmData[i];
+    if (sample !== undefined) {
+      int16Data[i] = Math.max(-32768, Math.min(32767, sample * 32768));
+    }
   }
   
   // Convert to base64 like the official demo
@@ -60,11 +110,13 @@ export default function LiveVoiceInterviewUI({
 
   // Audio and Gemini refs
   const clientRef = useRef<GoogleGenAI | null>(null);
-  const sessionRef = useRef<{ sendRealtimeInput: (input: unknown) => void; close: () => void } | null>(null);
+  const sessionRef = useRef<{ sendRealtimeInput: (input: LiveSendRealtimeInputParameters) => void; close: () => void } | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const recorderNodeRef = useRef<AudioWorkletNode | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const outputNodeRef = useRef<AudioWorkletNode | null>(null);
+  const nextStartTimeRef = useRef<number>(0);
+  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
 
   // Initialize client AND session immediately (like working example)
   const initClient = async () => {
@@ -99,6 +151,9 @@ export default function LiveVoiceInterviewUI({
         outputAudioContextRef.current,
         'improved-audio-worklet'
       );
+
+      // Initialize audio scheduling
+      nextStartTimeRef.current = outputAudioContextRef.current.currentTime;
     } catch (err) {
       console.error('Failed to initialize audio:', err);
       throw new Error('Failed to initialize audio system');
@@ -127,29 +182,41 @@ export default function LiveVoiceInterviewUI({
           onopen: () => {
             console.log('[LiveVoiceUI] ✅ Gemini Live session opened');
           },
-          onmessage: (message: any) => {
+          onmessage: (message: unknown) => {
             console.log('[LiveVoiceUI] 📨 Received message:', message);
+            
+            if (!isValidGeminiMessage(message)) {
+              console.warn('[LiveVoiceUI] ⚠️ Invalid message format:', message);
+              return;
+            }
             
             if (message.serverContent?.modelTurn?.parts) {
               for (const part of message.serverContent.modelTurn.parts) {
-                if (part.inlineData?.mimeType?.startsWith('audio/')) {
+                if (hasAudioPart(part) && part.inlineData?.mimeType?.startsWith('audio/')) {
                   setIsAISpeaking(true);
                   // Play AI audio
                   playAudioData(part.inlineData.data);
                 }
-                if (part.text) {
+                if (hasTextPart(part)) {
                   console.log('[LiveVoiceUI] 📝 AI text:', part.text);
                 }
               }
+            }
+
+            // Handle interruption (like working example)
+            if (message.serverContent?.interrupted) {
+              console.log('[LiveVoiceUI] 🛑 Audio interrupted, stopping all sources');
+              stopAllAudioSources();
             }
             
             if (message.serverContent?.turnComplete) {
               setIsAISpeaking(false);
             }
           },
-          onerror: (e: any) => {
-            console.error('[LiveVoiceUI] ❌ Session error:', e);
-            setError('Connection error: ' + e.message);
+          onerror: (error: unknown) => {
+            console.error('[LiveVoiceUI] ❌ Session error:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown connection error';
+            setError('Connection error: ' + errorMessage);
             setUIState('error');
           },
           onclose: (e: CloseEvent) => {
@@ -164,36 +231,69 @@ export default function LiveVoiceInterviewUI({
     }
   };
 
+  const stopAllAudioSources = () => {
+    for (const source of sourcesRef.current.values()) {
+      source.stop();
+      sourcesRef.current.delete(source);
+    }
+    if (outputAudioContextRef.current) {
+      nextStartTimeRef.current = outputAudioContextRef.current.currentTime;
+    }
+  };
+
   const playAudioData = (base64Audio: string) => {
     if (!outputAudioContextRef.current) return;
     
     try {
-      // Decode base64 audio and play it
+      // Decode base64 audio data (same as working example)
       const binaryString = atob(base64Audio);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
       
-      // Convert to Float32Array for Web Audio API
-      const pcmData = new Int16Array(bytes.buffer);
-      const float32Data = new Float32Array(pcmData.length);
-      for (let i = 0; i < pcmData.length; i++) {
-        float32Data[i] = pcmData[i] / 32768;
+      // Convert PCM 16-bit data to AudioBuffer (proper implementation)
+      // Gemini Live API sends PCM data at 24kHz sample rate, 16-bit, mono
+      const SAMPLE_RATE = 24000;
+      const CHANNELS = 1;
+      
+      // Convert Uint8Array to Int16Array (PCM 16-bit data)
+      const pcm16Data = new Int16Array(bytes.buffer);
+      
+      // Create AudioBuffer with correct sample count
+      const audioBuffer = outputAudioContextRef.current.createBuffer(
+        CHANNELS, 
+        pcm16Data.length, 
+        SAMPLE_RATE
+      );
+      
+      // Convert Int16 PCM to Float32 for AudioBuffer
+      const channelData = audioBuffer.getChannelData(0);
+      for (let i = 0; i < pcm16Data.length; i++) {
+        const sample = pcm16Data[i];
+        if (sample !== undefined) {
+          channelData[i] = sample / 32768.0; // Convert to -1.0 to 1.0 range
+        }
       }
       
-      // Create audio buffer and play
-      const audioBuffer = outputAudioContextRef.current.createBuffer(1, float32Data.length, 24000);
-      audioBuffer.copyToChannel(float32Data, 0);
-      
+      // Schedule audio playback properly (like working example)
+      nextStartTimeRef.current = Math.max(
+        nextStartTimeRef.current,
+        outputAudioContextRef.current.currentTime
+      );
+
       const source = outputAudioContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(outputAudioContextRef.current.destination);
-      source.start();
       
-      source.onended = () => {
+      source.addEventListener('ended', () => {
+        sourcesRef.current.delete(source);
         setIsAISpeaking(false);
-      };
+      });
+
+      source.start(nextStartTimeRef.current);
+      nextStartTimeRef.current = nextStartTimeRef.current + audioBuffer.duration;
+      sourcesRef.current.add(source);
     } catch (err) {
       console.error('[LiveVoiceUI] ❌ Failed to play audio:', err);
       setIsAISpeaking(false);
@@ -227,7 +327,8 @@ export default function LiveVoiceInterviewUI({
         // Check session exists (simplified like working example)
         if (!sessionRef.current) return;
 
-        const audioBuffer = event.data.audioBuffer as Float32Array;
+        const eventData = event.data as { audioBuffer?: Float32Array };
+        const audioBuffer = eventData.audioBuffer;
         if (audioBuffer && audioBuffer.length > 0) {
           // Send buffered data to Gemini using official format
           try {
@@ -235,7 +336,7 @@ export default function LiveVoiceInterviewUI({
             const base64Audio = convertToBase64PCM(audioBuffer);
             
             sessionRef.current.sendRealtimeInput({
-              audio: {
+              media: {
                 data: base64Audio,
                 mimeType: "audio/pcm;rate=16000"
               }
