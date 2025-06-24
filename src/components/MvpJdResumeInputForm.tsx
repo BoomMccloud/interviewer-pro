@@ -55,9 +55,9 @@ export default function MvpJdResumeInputForm({
     },
   });
 
-  const createSessionMutation = api.session.createSession.useMutation({
+  const createDraftSessionMutation = api.session.createDraftSession.useMutation();
+  const startSessionMutation = api.session.startInterviewSession.useMutation({
     onSuccess: (data) => {
-      // Redirect to the new session
       router.push(`/sessions/${data.sessionId}`);
       onStartSessionSuccess?.();
     },
@@ -81,37 +81,34 @@ export default function MvpJdResumeInputForm({
   };
 
   const handleStartSession = async () => {
-    if (createSessionMutation.isPending) return;
-    
-    // Ensure text is saved before starting session
-    if (!lastSavedData || jdText !== lastSavedData.jdText || resumeText !== lastSavedData.resumeText) {
-      // Save first and wait for completion
-      if (!saveJdResumeMutation.isPending) {
-        try {
-          // Wait for the save operation to complete
-          await saveJdResumeMutation.mutateAsync({ jdText, resumeText });
-          // After save completes, the mutation onSuccess callback will update lastSavedData
-          // Continue to session creation below
-        } catch (error) {
-          console.error('Error saving before session start:', error);
-          onError?.(`Failed to save text before starting session: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          return;
-        }
-      } else {
-        // Save is already in progress, don't start session yet
-        return;
+    if (startSessionMutation.isPending || saveJdResumeMutation.isPending || createDraftSessionMutation.isPending) return;
+
+    try {
+      // Step 1: Ensure text is saved.
+      if (!lastSavedData || jdText !== lastSavedData.jdText || resumeText !== lastSavedData.resumeText) {
+        await saveJdResumeMutation.mutateAsync({ jdText, resumeText });
       }
+
+      // Step 2: Create a draft session to get a sessionId.
+      const personaId = PERSONA_IDS.HR_RECRUITER_GENERAL;
+      const draftSession = await createDraftSessionMutation.mutateAsync({ personaId });
+
+      // Step 3: Use the new sessionId to start the session with pre-generated questions.
+      await startSessionMutation.mutateAsync({ 
+        sessionId: draftSession.sessionId, 
+        personaId: personaId 
+      });
+
+    } catch (error) {
+      console.error('Error starting interview flow:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      onError?.(`Failed to start interview: ${errorMessage}`);
     }
-    
-    // At this point, we should have saved data (either from before or just saved)
-    // Use type-safe persona constant
-    const personaId = PERSONA_IDS.HR_RECRUITER_GENERAL;
-    createSessionMutation.mutate({ personaId, durationInSeconds: 15 * 60 });
   };
 
   const canStartSession = jdText.trim().length > 0 && resumeText.trim().length > 0;
   const isSaving = saveJdResumeMutation.isPending;
-  const isStartingSession = createSessionMutation.isPending;
+  const isStartingSession = startSessionMutation.isPending || createDraftSessionMutation.isPending;
 
   return (
     <div className="space-y-4">

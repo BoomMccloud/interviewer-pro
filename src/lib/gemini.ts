@@ -184,7 +184,7 @@ function parseStructuredResponse(rawResponse: string): {
 
 
 /**
- * 🔴 PLACEHOLDER for TDD: Generates all interview questions upfront.
+ * 🔴 Mock Implementation: Generates all interview questions upfront.
  * This function is required by the pre-generated questions feature test.
  * @param jdResumeText The user's JD and Resume text.
  * @param persona The persona definition.
@@ -197,31 +197,29 @@ export async function generateAllInterviewQuestions(
   questionCount: number,
 ): Promise<TopicalQuestionResponse[]> {
   // This is a placeholder for TDD. The real implementation will call the AI.
-  console.log(`🔴 TDD Placeholder: generateAllInterviewQuestions called for ${questionCount} questions.`);
+  console.log(`🔴 Mock Implementation: generateAllInterviewQuestions called for ${questionCount} questions.`);
   
   // In a real implementation, you would loop or use a more complex prompt.
   // For now, we'll return a static array that matches the test expectations.
-  if (isTestEnvironment) {
+  
+  // This mock will always return the same 3 questions for now.
     return Promise.resolve([
       {
-        questionText: 'Mock Question 1',
-        keyPoints: ['Point A', 'Point B'],
+      questionText: 'Mock Question 1: Can you walk me through your resume?',
+      keyPoints: ['Summarize your background', 'Highlight relevant experience', 'Explain career progression'],
         rawAiResponseText: 'Mock AI Response 1',
       },
       {
-        questionText: 'Mock Question 2',
-        keyPoints: ['Point C', 'Point D'],
+      questionText: 'Mock Question 2: What is your experience with React?',
+      keyPoints: ['Discuss component-based architecture', 'Talk about state management (Hooks, Redux)', 'Mention performance optimization'],
         rawAiResponseText: 'Mock AI Response 2',
       },
       {
-        questionText: 'Mock Question 3',
-        keyPoints: ['Point E', 'Point F'],
+      questionText: 'Mock Question 3: Describe a challenging project you worked on.',
+      keyPoints: ['Explain the project and the challenge', 'Describe your specific role and actions', 'Detail the outcome and what you learned'],
         rawAiResponseText: 'Mock AI Response 3',
       },
     ]);
-  }
-  // This will throw in a real environment until implemented
-  throw new Error('generateAllInterviewQuestions is not yet implemented.');
 }
 
 

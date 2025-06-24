@@ -28,8 +28,14 @@ export default function SessionPage() {
   });
 
   const moveToNextMutation = api.session.moveToNextQuestion.useMutation({
-    onSuccess: () => {
-      void refetch();
+    onSuccess: (data) => {
+      if (data.isComplete) {
+        // Interview is over, navigate to the report page
+        router.push(`/sessions/${data.sessionId}/report`);
+      } else {
+        // Interview is ongoing, refetch data for the next question
+        void refetch();
+      }
     },
   });
 

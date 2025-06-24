@@ -167,6 +167,47 @@ export const sessionRouter = createTRPCRouter({
     }),
 
   /**
+   * Creates a draft session record without generating questions.
+   * This is the first step before calling startInterviewSession.
+   */
+  createDraftSession: protectedProcedure
+    .input(z.object({
+      personaId: zodPersonaId,
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { personaId } = input;
+      const { user } = ctx.session;
+
+      const jdResumeRecord = await db.jdResumeText.findFirst({
+        where: { userId: user.id },
+        orderBy: { updatedAt: 'desc' },
+      });
+
+      if (!jdResumeRecord) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'JD/Resume not found for user. Please save your JD and Resume first.',
+        });
+      }
+
+      const newSession = await db.sessionData.create({
+        data: {
+          userId: user.id,
+          jdResumeTextId: jdResumeRecord.id,
+          personaId: personaId,
+          status: 'draft',
+          durationInSeconds: 1900, // Default to 33 mins, can be changed later
+          currentQuestionIndex: 0,
+          questionSegments: [], // Initially empty
+        },
+      });
+
+      return {
+        sessionId: newSession.id,
+      };
+    }),
+
+  /**
    * Lists all sessions for the current user's JD/Resume text.
    * Returns an array of SessionData objects for the authenticated user.
    */
@@ -495,9 +536,9 @@ export const sessionRouter = createTRPCRouter({
         where: { id: input.sessionId },
         data: {
           questionSegments: allQuestions.map((q, i) => ({
-            questionId: `q${i + 1}_topical`,
+            questionId: `q${i + 1}_technical`,
             questionNumber: i + 1,
-            questionType: 'topical',
+            questionType: 'technical',
             question: q.questionText,
             keyPoints: q.keyPoints,
             startTime: i === 0 ? new Date().toISOString() : null, // Start time for first question
@@ -884,6 +925,20 @@ export const sessionRouter = createTRPCRouter({
     .input(z.object({
       sessionId: z.string(),
     }))
+    .output(z.discriminatedUnion('isComplete', [
+      z.object({
+        isComplete: z.literal(false),
+        questionText: z.string(),
+        questionNumber: z.number(),
+        totalQuestions: z.number(),
+        keyPoints: z.array(z.string()),
+      }),
+      z.object({
+        isComplete: z.literal(true),
+        sessionId: z.string(),
+        message: z.string(),
+      }),
+    ]))
     .mutation(async ({ ctx, input }) => {
       console.log('🚀 [SESSION] moveToNextQuestion called');
       console.log('📝 [SESSION] Session ID:', input.sessionId);
@@ -950,6 +1005,7 @@ export const sessionRouter = createTRPCRouter({
           data: {
             questionSegments: JSON.parse(JSON.stringify(questionSegments)) as Prisma.InputJsonValue,
             currentQuestionIndex: nextIndex,
+            status: 'completed',
             endTime: new Date(),
             updatedAt: new Date(),
           },
@@ -957,11 +1013,8 @@ export const sessionRouter = createTRPCRouter({
 
         return {
           isComplete: true,
+          sessionId: input.sessionId,
           message: `Interview completed! You have successfully answered ${questionSegments.length} questions.`,
-          totalQuestions: questionSegments.length,
-          questionText: null,
-          keyPoints: [],
-          questionNumber: null,
         };
       }
 
@@ -1008,7 +1061,6 @@ export const sessionRouter = createTRPCRouter({
         questionNumber: nextQuestion.questionNumber,
         totalQuestions: questionSegments.length,
         keyPoints: nextQuestion.keyPoints,
-        message: null,
       };
     }),
 
