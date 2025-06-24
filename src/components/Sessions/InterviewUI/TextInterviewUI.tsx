@@ -42,6 +42,7 @@ interface TextInterviewUIProps {
   onEnd?: () => Promise<void>;
   isSaving?: boolean;
   isEnding?: boolean;
+  isMovingToNext?: boolean;
 }
 
 export default function TextInterviewUI({ 
@@ -54,7 +55,8 @@ export default function TextInterviewUI({
   onSave,
   onEnd,
   isSaving,
-  isEnding
+  isEnding,
+  isMovingToNext,
 }: TextInterviewUIProps) {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -281,9 +283,9 @@ export default function TextInterviewUI({
                     type="button"
                     onClick={onMoveToNext}
                     className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:bg-gray-400"
-                    disabled={isLoading}
+                    disabled={isLoading || isMovingToNext}
                   >
-                    Next Question
+                    {isMovingToNext ? 'Loading...' : 'Next Question'}
                   </button>
                 )}
 
@@ -294,7 +296,7 @@ export default function TextInterviewUI({
                     disabled={isSaving}
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 focus:outline-none disabled:opacity-50"
                   >
-                    {isSaving ? 'Saving...' : 'Save & Exit'}
+                    {isSaving ? 'Saving...' : 'Save'}
                   </button>
                 )}
 

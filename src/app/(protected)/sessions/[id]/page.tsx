@@ -124,7 +124,7 @@ export default function SessionPage() {
       onSubmitResponse={handleSubmitResponse}
       isLoading={submitResponseMutation.isPending}
       onMoveToNext={handleMoveToNext}
-      isGettingNextTopic={moveToNextMutation.isPending}
+      isMovingToNext={moveToNextMutation.isPending}
       onSave={handleSave}
       onEnd={handleEnd}
       isSaving={saveSessionMutation.isPending}

@@ -67,10 +67,6 @@ export const zodInterviewMode = z.enum([
   INTERVIEW_MODES.AVATAR,
 ]);
 
-// Define specific persona IDs used in MVP (can expand later)
-// This remains useful as SessionData.personaId is just `string` from Prisma
-export type PersonaIdLegacy = 'technical-lead';
-
 
 // --- Prisma Model Zod Schemas ---
 // Define Zod schemas for Prisma models used in API input/output validation
@@ -83,41 +79,6 @@ export const zodJdResumeText = z.object({
   createdAt: z.coerce.date(), // Coerce to Date object from string/number
   updatedAt: z.coerce.date(),
 });
-
-// Represents a single turn in the interview conversation history
-// Stored in the database as part of SessionData.history (JSON field)
-export interface MvpSessionTurn {
-  id: string; // Can be a unique ID for the turn, or simply an array index if only stored in SessionData.history
-  role: ChatRole; // 'user' or 'model' (AI)
-  text: string; // The display text (user's answer, AI's question part)
-  // Store the full raw AI response text containing all delimited sections.
-  // This is needed to pass the full context back to the AI in subsequent turns.
-  rawAiResponseText?: string; // Only present for 'model' roles
-  timestamp: Date; // When this turn occurred
-  
-  // Optional type field for special entries like pause, resume, etc.
-  type?: 'pause' | 'resume' | 'end' | 'conversational' | 'topic_transition'; // Special turn types for session state management
-
-  // Store the parsed feedback/analysis/alternative directly in the turn data.
-  // This simplifies fetching data for the report. Only present for 'model' roles.
-  analysis?: string;
-  feedbackPoints?: string[];
-  suggestedAlternative?: string;
-}
-
-export const zodMvpSessionTurn = z.object({
-  id: z.string(),
-  role: zodChatRole,
-  text: z.string(),
-  rawAiResponseText: z.string().optional(),
-  timestamp: z.coerce.date(), // Coerce to Date object from string/number
-  type: z.enum(['pause', 'resume', 'end', 'conversational', 'topic_transition']).optional(), // Optional type for special turn types
-  analysis: z.string().optional(),
-  feedbackPoints: z.array(z.string()).optional(),
-  suggestedAlternative: z.string().optional(),
-});
-
-export const zodMvpSessionTurnArray = z.array(zodMvpSessionTurn);
 
 // NEW: QuestionSegments Structure for Phase 3C Migration
 // Represents a single conversation turn within a question segment
@@ -132,7 +93,7 @@ export interface ConversationTurn {
 export interface QuestionSegment {
   questionId: string;           // "q1_opening", "q2_topic1", "q3_behavioral"
   questionNumber: number;       // 1, 2, 3...
-  questionType: 'opening' | 'technical' | 'behavioral' | 'followup';
+  questionType: 'opening' | 'technical' | 'behavioral' | 'followup' | 'topical';
   question: string;             // The actual question text
   keyPoints: string[];          // Array of guidance points
   startTime: string | null;     // ISO timestamp when question started, null if not started yet
@@ -151,7 +112,7 @@ export const zodConversationTurn = z.object({
 export const zodQuestionSegment = z.object({
   questionId: z.string(),
   questionNumber: z.number().int(),
-  questionType: z.enum(['opening', 'technical', 'behavioral', 'followup']),
+  questionType: z.enum(['opening', 'technical', 'behavioral', 'followup', 'topical']),
   question: z.string(),
   keyPoints: z.array(z.string()),
   startTime: z.string().nullable(), // Allow null for questions that haven't started yet
@@ -160,15 +121,6 @@ export const zodQuestionSegment = z.object({
 });
 
 export const zodQuestionSegmentArray = z.array(zodQuestionSegment);
-
-// Current MVP AI Response (from continueInterview - will be deprecated)
-export interface MvpAiResponse {
-  nextQuestion: string;
-  keyPoints: string[];
-  analysis: string;
-  feedbackPoints: string[];
-  suggestedAlternative: string;
-}
 
 // NEW: Conversational Response (for continueConversation function)
 export interface ConversationalResponse {
@@ -185,22 +137,6 @@ export interface TopicalQuestionResponse {
   rawAiResponseText: string;
 }
 
-// Define Zod schema for SessionData
-export const zodSessionData = z.object({
-  id: z.string(),
-  userId: z.string(),
-  personaId: z.string(),
-  jdResumeTextId: z.string(),
-  // The history field is stored as JSON in Prisma, but we expect an array of MvpSessionTurn objects
-  history: zodMvpSessionTurnArray, // Use the previously defined schema for turns
-  durationInSeconds: z.number(),
-  overallSummary: z.string().nullable(),
-  startTime: z.coerce.date(),
-  endTime: z.coerce.date().nullable(),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
-});
-
 // MvpSessionData is now imported from @prisma/client as SessionData.
 // Its `history` field will be of type `Prisma.JsonValue`.
 // In your application logic, you will cast this to `MvpSessionTurn[]`.
@@ -209,31 +145,6 @@ export const zodSessionData = z.object({
 // MvpUser is now imported from @prisma/client as User.
 
 // --- Other potential types for frontend/API ---
-
-// Example type for data returned by /api/mvp-sessions/[id]/report
-export interface MvpReportData {
-    sessionId: string;
-    // status: SessionData['status']; // Status was removed, derived from endTime
-    startTime: Date; // Changed to Date to match Zod schema
-    endTime?: Date | null; // Align with SessionData['endTime'] (Date | null)
-    durationConfigured: number; // Corresponds to SessionData['durationInSeconds']
-    durationActual?: number; // To be calculated
-    personaName: string; // Will need to map SessionData['personaId'] to a name
-    overallSummary?: string | null; // Align with SessionData['overallSummary']
-    turns: Array<MvpSessionTurn>; 
-}
-
-// Define Zod schema for MvpReportData
-export const zodMvpReportData = z.object({
-  sessionId: z.string(),
-  startTime: z.coerce.date(), // Expecting ISO string from API, coerce to Date
-  endTime: z.coerce.date().nullable(),
-  durationConfigured: z.number(),
-  durationActual: z.number().optional(),
-  personaName: z.string(),
-  overallSummary: z.string().nullable().optional(),
-  turns: z.array(zodMvpSessionTurn), // Use the schema for individual turns
-});
 
 // Exporting the Prisma generated types directly if they are to be used project-wide
 // This makes it easy to import User, JdResumeText, SessionData from 'src/types'
@@ -248,7 +159,6 @@ export type { User, JdResumeText, SessionData };
 export interface SessionReportData {
   sessionId: string;
   durationInSeconds: number;
-  history: MvpSessionTurn[];
   questionCount: number; // Number of AI questions asked
   completionPercentage: number; // Percentage of session completed
   createdAt: Date;
@@ -258,7 +168,18 @@ export interface SessionReportData {
   jdResumeTextId: string;
 }
 
-// Return type for getSessionAnalytics procedure
+export const zodSessionReportData = z.object({
+  sessionId: z.string(),
+  durationInSeconds: z.number(),
+  questionCount: z.number(),
+  completionPercentage: z.number(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  averageResponseTime: z.number(),
+  personaId: z.string(),
+  jdResumeTextId: z.string(),
+});
+
 export interface SessionAnalyticsData {
   sessionId: string;
   totalQuestions: number; // Total number of AI questions
@@ -270,7 +191,6 @@ export interface SessionAnalyticsData {
   performanceScore: number; // Overall performance score (0-100)
 }
 
-// Return type for getSessionFeedback procedure
 export interface SessionFeedbackData {
   sessionId: string;
   overallScore: number; // Overall interview performance score (0-100)
@@ -281,20 +201,7 @@ export interface SessionFeedbackData {
   skillAssessment: Record<string, number>; // Skill categories and scores
 }
 
-// Zod schemas for validation
-export const zodSessionReportData = z.object({
-  sessionId: z.string(),
-  durationInSeconds: z.number(),
-  history: zodMvpSessionTurnArray,
-  questionCount: z.number(),
-  completionPercentage: z.number(),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
-  averageResponseTime: z.number(),
-  personaId: z.string(),
-  jdResumeTextId: z.string(),
-});
-
+// Zod schemas for analytics and feedback data
 export const zodSessionAnalyticsData = z.object({
   sessionId: z.string(),
   totalQuestions: z.number(),
@@ -313,148 +220,34 @@ export const zodSessionFeedbackData = z.object({
   areasForImprovement: z.array(z.string()),
   recommendations: z.array(z.string()),
   detailedAnalysis: z.string(),
-  skillAssessment: z.record(z.string(), z.number()),
-});
-
-// ==============================================
-// Phase 3A: Live Interview Session Types (TDD)
-// ==============================================
-
-/**
- * Active session state for live interviews
- * Used to track real-time interview progress and state
- */
-export interface ActiveSessionData {
-  sessionId: string;
-  status: 'created' | 'active' | 'paused' | 'completed' | 'abandoned';
-  personaId: string;
-  currentQuestion: string;
-  keyPoints: string[];                      // NEW: Key points for current question
-  questionNumber: number;
-  totalQuestions: number;
-  timeRemaining: number; // in seconds
-  conversationHistory: ConversationTurn[];  // NEW: Current question's conversation using new structure
-  questionSegments: QuestionSegment[];      // NEW: All question segments
-  currentQuestionIndex: number;             // NEW: Which question is active
-  canProceedToNextTopic: boolean;           // NEW: Whether user can advance to next topic
-  startTime: Date | null;
-  lastActivityTime: Date;
-  endTime?: Date;
-}
-
-/**
- * Interview persona configuration
- * Defines different interviewer personalities and styles
- */
-export interface InterviewPersona {
-  id: string;
-  name: string;
-  description: string;
-  style: 'technical' | 'behavioral' | 'case-study' | 'general';
-  personality: string;
-  questionStyle: string;
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
-}
-
-/**
- * Request format for starting an interview session
- */
-export interface StartInterviewSessionRequest {
-  sessionId: string;
-  personaId: string;
-}
-
-/**
- * Response format for starting an interview session
- */
-export interface StartInterviewSessionResponse {
-  sessionId: string;
-  status: 'active';
-  personaId: string;
-  currentQuestion: string;
-  questionNumber: number;
-  totalQuestions: number;
-  timeRemaining: number;
-  conversationHistory: MvpSessionTurn[];
-}
-
-
-
-// ==============================================
-// Zod Schemas for Phase 3A Types
-// ==============================================
-
-export const zodActiveSessionData = z.object({
-  sessionId: z.string(),
-  status: z.enum(['created', 'active', 'paused', 'completed', 'abandoned']),
-  personaId: z.string(),
-  currentQuestion: z.string(),
-  keyPoints: z.array(z.string()),
-  questionNumber: z.number().int(),
-  totalQuestions: z.number().int(),
-  timeRemaining: z.number().int(),
-  conversationHistory: z.array(zodConversationTurn),
-  questionSegments: z.array(zodQuestionSegment),
-  currentQuestionIndex: z.number().int(),
-  canProceedToNextTopic: z.boolean(),
-  startTime: z.date().nullable(),
-  lastActivityTime: z.date(),
-  endTime: z.date().optional(),
-});
-
-export const zodInterviewPersona = z.object({
-  id: z.string(),
-  name: z.string(),
-  description: z.string(),
-  style: z.enum(['technical', 'behavioral', 'case-study', 'general']),
-  personality: z.string(),
-  questionStyle: z.string(),
-  difficulty: z.enum(['beginner', 'intermediate', 'advanced']),
-});
-
-export const zodStartInterviewSessionRequest = z.object({
-  sessionId: z.string(),
-  personaId: z.string(),
+  skillAssessment: z.record(z.number()),
 });
 
 
-
-// ===================================================================
-// Question Generation API Types
-// ===================================================================
-
-// Question type categories for different stages of interview
-export type QuestionType = 'opening' | 'technical' | 'behavioral' | 'followup';
-
-// Response from generateInterviewQuestion API
-export interface GeneratedQuestion {
-  question: string;
-  keyPoints: string[];
-  questionType: QuestionType;
-  personaId: string;
-  metadata: {
-    difficulty: 'easy' | 'medium' | 'hard';
-    estimatedResponseTime: number; // in seconds
-    tags: string[]; // categorization tags
-  };
-  rawAiResponse: string; // For session storage if needed
-}
-
-// Zod schema for validation
-export const zodQuestionType = z.enum(['opening', 'technical', 'behavioral', 'followup']);
-
-export const zodGeneratedQuestion = z.object({
-  question: z.string(),
-  keyPoints: z.array(z.string()),
-  questionType: zodQuestionType,
-  personaId: z.string(),
-  metadata: z.object({
-    difficulty: z.enum(['easy', 'medium', 'hard']),
-    estimatedResponseTime: z.number(),
-    tags: z.array(z.string()),
-  }),
-  rawAiResponse: z.string(),
+// Overall Assessment from LLM (for report generation)
+export const zodOverallAssessment = z.object({
+  summary: z.string(),
+  strengths: z.array(z.string()),
+  improvements: z.array(z.string()),
+  score: z.number().min(1).max(10),
 });
+
+// Feedback for a single question (for report generation)
+export const zodQuestionFeedback = z.object({
+  contentFeedback: z.string(),
+  clarityFeedback: z.string(),
+  confidenceFeedback: z.string(),
+  suggestedAnswer: z.string(),
+});
+
+// Used in report.ts router to define the full report structure
+export interface FullReportData {
+  session: SessionData;
+  persona: Persona;
+  jdResumeText: JdResumeText;
+  overallAssessment: z.infer<typeof zodOverallAssessment>;
+  questionFeedback: Record<string, z.infer<typeof zodQuestionFeedback>>;
+}
 
 export interface FeedbackConversation {
   id: string;
@@ -467,11 +260,4 @@ export interface FeedbackConversation {
 }
 
 export type OverallAssessment = z.infer<typeof zodOverallAssessment>;
-export const zodOverallAssessment = z.object({
-  summary: z.string(),
-  strengths: z.array(z.string()),
-  improvements: z.array(z.string()),
-  score: z.number(),
-});
-
-// ===================================================================
+export type QuestionFeedback = z.infer<typeof zodQuestionFeedback>;

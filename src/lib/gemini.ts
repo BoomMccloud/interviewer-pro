@@ -183,9 +183,119 @@ function parseStructuredResponse(rawResponse: string): {
 }
 
 
+// --- New Batch Question Generation Helpers ---
+
 /**
- * 🔴 Mock Implementation: Generates all interview questions upfront.
- * This function is required by the pre-generated questions feature test.
+ * Builds the prompt for generating a batch of interview questions.
+ * @param jdResumeText The user's JD and Resume text.
+ * @param persona The persona definition.
+ * @param questionCount The number of questions to generate.
+ * @returns An array of Content objects for the Gemini API.
+ */
+function buildBatchGenerationPrompt(
+  jdResumeText: JdResumeText,
+  persona: Persona,
+  questionCount: number,
+): Content[] {
+  const systemInstruction = buildSystemInstruction(persona);
+  
+  const userPrompt = `
+You are tasked with generating a set of ${questionCount} interview questions for a candidate.
+Your response MUST be a single block of XML, with no extra text before or after the main <QUESTIONS> tag.
+
+**Instructions for Question Generation:**
+1.  **Question 1 (Introductory):** A general opening question about the candidate's background, based on their resume.
+2.  **Question 2 (Technical):** A specific technical question that assesses a key skill mentioned in the Job Description.
+3.  **Question 3 (Behavioral):** A behavioral question to understand how the candidate handles workplace situations.
+
+**Job Description:**
+<JD>
+${jdResumeText.jdText}
+</JD>
+
+**Candidate's Resume:**
+<RESUME>
+${jdResumeText.resumeText}
+</RESUME>
+
+**Required Response Format:**
+You MUST wrap all questions in a single <QUESTIONS> tag. Each question must be in its own <QUESTION_BLOCK> and contain:
+- A <QUESTION_TEXT> tag with the question.
+- A <KEY_POINTS> tag with 3-4 bulleted points (- item) outlining what a good answer should cover.
+
+Example:
+<QUESTIONS>
+  <QUESTION_BLOCK>
+    <QUESTION_TEXT>Can you walk me through your resume and highlight your most relevant experience for this role?</QUESTION_TEXT>
+    <KEY_POINTS>
+    - Summarize professional background
+    - Connect past experiences to the job description
+    - Explain career progression and goals
+    </KEY_POINTS>
+  </QUESTION_BLOCK>
+  ... more QUESTION_BLOCKS
+</QUESTIONS>`;
+
+  return [
+    {
+      role: 'user',
+      parts: [
+        { text: systemInstruction },
+        { text: userPrompt },
+      ],
+    },
+  ];
+}
+
+
+/**
+ * Parses the raw XML response from the batch question generation call.
+ * @param rawResponse The raw string response from the AI.
+ * @returns An array of TopicalQuestionResponse objects.
+ */
+function parseBatchQuestionResponse(rawResponse: string): TopicalQuestionResponse[] {
+  const questions: TopicalQuestionResponse[] = [];
+  const cleanedResponse = rawResponse.trim().replace(/```xml/g, '').replace(/```/g, '');
+
+  const questionBlocksMatch = /<QUESTIONS>(.*?)<\/QUESTIONS>/s.exec(cleanedResponse);
+  
+  if (!questionBlocksMatch?.[1]) {
+    console.error('❌ [GEMINI] parseBatchQuestionResponse: Could not find <QUESTIONS> block.');
+    return [];
+  }
+
+  const questionBlocksRaw = questionBlocksMatch[1];
+  const blockRegex = /<QUESTION_BLOCK>(.*?)<\/QUESTION_BLOCK>/gs;
+  
+  let match;
+  while ((match = blockRegex.exec(questionBlocksRaw)) !== null) {
+    const blockContent = match[1];
+    if (!blockContent) continue;
+    
+    const questionText = /<QUESTION_TEXT>(.*?)<\/QUESTION_TEXT>/s.exec(blockContent)?.[1]?.trim();
+    const keyPointsRaw = /<KEY_POINTS>(.*?)<\/KEY_POINTS>/s.exec(blockContent)?.[1]?.trim();
+    
+    if (questionText && keyPointsRaw) {
+      
+      const keyPoints = keyPointsRaw
+        .split('\n')
+        .map(point => point.replace(/^[-•*]\s*/, '').trim())
+        .filter(point => point.length > 5);
+
+      questions.push({
+        questionText,
+        keyPoints,
+        rawAiResponseText: blockContent, // Store the raw block for debugging
+      });
+    }
+  }
+
+  return questions;
+}
+
+
+/**
+ * 🟢 Refactored Implementation: Generates all interview questions upfront by calling the Gemini API.
  * @param jdResumeText The user's JD and Resume text.
  * @param persona The persona definition.
  * @param questionCount The number of questions to generate.
@@ -196,30 +306,84 @@ export async function generateAllInterviewQuestions(
   persona: Persona,
   questionCount: number,
 ): Promise<TopicalQuestionResponse[]> {
-  // This is a placeholder for TDD. The real implementation will call the AI.
-  console.log(`🔴 Mock Implementation: generateAllInterviewQuestions called for ${questionCount} questions.`);
-  
-  // In a real implementation, you would loop or use a more complex prompt.
-  // For now, we'll return a static array that matches the test expectations.
-  
-  // This mock will always return the same 3 questions for now.
+  console.log(`🚀 [GEMINI] generateAllInterviewQuestions called for ${questionCount} questions.`);
+
+  if (isTestEnvironment) {
+    console.log(`🔴 Mock Implementation: Returning static questions for test env.`);
     return Promise.resolve([
       {
-      questionText: 'Mock Question 1: Can you walk me through your resume?',
-      keyPoints: ['Summarize your background', 'Highlight relevant experience', 'Explain career progression'],
+        questionText: 'Mock Question 1: Can you walk me through your resume?',
+        keyPoints: ['Summarize your background', 'Highlight relevant experience', 'Explain career progression'],
         rawAiResponseText: 'Mock AI Response 1',
       },
       {
-      questionText: 'Mock Question 2: What is your experience with React?',
-      keyPoints: ['Discuss component-based architecture', 'Talk about state management (Hooks, Redux)', 'Mention performance optimization'],
+        questionText: 'Mock Question 2: What is your experience with React?',
+        keyPoints: ['Discuss component-based architecture', 'Talk about state management (Hooks, Redux)', 'Mention performance optimization'],
         rawAiResponseText: 'Mock AI Response 2',
       },
       {
-      questionText: 'Mock Question 3: Describe a challenging project you worked on.',
-      keyPoints: ['Explain the project and the challenge', 'Describe your specific role and actions', 'Detail the outcome and what you learned'],
+        questionText: 'Mock Question 3: Describe a challenging project you worked on.',
+        keyPoints: ['Explain the project and the challenge', 'Describe your specific role and actions', 'Detail the outcome and what you learned'],
         rawAiResponseText: 'Mock AI Response 3',
       },
     ]);
+  }
+
+  try {
+    const contents = buildBatchGenerationPrompt(jdResumeText, persona, questionCount);
+
+    const response = await genAI.models.generateContentStream({
+      model: MODEL_NAME_TEXT,
+      contents: contents,
+      config: {
+        temperature: 0.6,
+        maxOutputTokens: 2048, // Increased for multiple questions
+        topP: 0.8,
+        topK: 40,
+      },
+    });
+
+    const rawAiResponseText = await processStream(response);
+    console.log('✅ [GEMINI] generateAllInterviewQuestions raw response length:', rawAiResponseText.length);
+
+    if (!rawAiResponseText) {
+      console.error('❌ [GEMINI] generateAllInterviewQuestions: AI returned empty response');
+      throw new Error('AI returned empty response');
+    }
+
+    const parsedQuestions = parseBatchQuestionResponse(rawAiResponseText);
+    console.log('✅ [GEMINI] generateAllInterviewQuestions parsed count:', parsedQuestions.length);
+
+    if (parsedQuestions.length < questionCount) {
+      console.error(`❌ [GEMINI] AI only returned ${parsedQuestions.length}/${questionCount} questions.`);
+      // In a real scenario, we might want to throw or have a fallback here.
+      // For now, we return what we got.
+    }
+
+    return parsedQuestions;
+
+  } catch (error) {
+    console.error('💥 [GEMINI] generateAllInterviewQuestions failed:', error);
+    console.log('🔄 [GEMINI] Using fallback mock questions due to error.');
+    // Return mock questions as a fallback
+    return [
+      {
+        questionText: 'Fallback Question 1: Tell me about yourself.',
+        keyPoints: ['Summarize background', 'Highlight relevant experience', 'Explain career goals'],
+        rawAiResponseText: `FALLBACK_RESPONSE: Batch question generation failed. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      },
+      {
+        questionText: 'Fallback Question 2: What are your strengths?',
+        keyPoints: ['Provide specific examples', 'Connect strengths to the job role', 'Be confident'],
+        rawAiResponseText: `FALLBACK_RESPONSE: Batch question generation failed.`,
+      },
+      {
+        questionText: 'Fallback Question 3: Why are you interested in this role?',
+        keyPoints: ['Show you researched the company', 'Align your skills with the role', 'Express enthusiasm'],
+        rawAiResponseText: `FALLBACK_RESPONSE: Batch question generation failed.`,
+      },
+    ];
+  }
 }
 
 
@@ -621,151 +785,6 @@ export async function continueConversation(
       rawAiResponseText: `FALLBACK_RESPONSE: Conversation continuation failed. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
     };
   }
-}
-
-/**
- * 🔵 REFACTOR Phase - Enhanced Implementation  
- * Generates new topical questions for topic transitions only.
- * Does NOT provide conversational responses.
- */
-export async function getNewTopicalQuestion(
-  jdResumeText: JdResumeText,
-  persona: Persona,
-  history: MvpSessionTurn[],
-  coveredTopics?: string[]
-): Promise<TopicalQuestionResponse> {
-  console.log('🚀 [GEMINI] getNewTopicalQuestion called');
-  console.log('📝 [GEMINI] JD length:', jdResumeText.jdText.length);
-  console.log('📝 [GEMINI] Resume length:', jdResumeText.resumeText.length);
-  console.log('📝 [GEMINI] Persona:', persona.name);
-  console.log('📝 [GEMINI] History turns:', history.length);
-  console.log('📝 [GEMINI] Covered topics:', coveredTopics?.join(', ') ?? 'none');
-  
-  try {
-    // Build enhanced topic-generation prompt
-    const contents = buildTopicalPrompt(jdResumeText, persona, history, coveredTopics);
-
-    const response = await genAI.models.generateContentStream({
-      model: MODEL_NAME_TEXT,
-      contents: contents,
-      config: {
-        temperature: 0.8, // Higher creativity for diverse topic selection
-        maxOutputTokens: 800, // Sufficient for question + key points
-        topP: 0.85,
-        topK: 50, // More diversity for topic selection
-      },
-    });
-
-    const rawAiResponseText = await processStream(response);
-    console.log('✅ [GEMINI] getNewTopicalQuestion raw response length:', rawAiResponseText.length);
-    
-    if (!rawAiResponseText) {
-      console.error('❌ [GEMINI] getNewTopicalQuestion: AI returned empty response');
-      throw new Error('AI returned empty response');
-    }
-
-    // Enhanced topical response parsing
-    const parsed = parseStructuredResponse(rawAiResponseText);
-    console.log('✅ [GEMINI] getNewTopicalQuestion parsed question:', parsed.questionText.substring(0, 100) + '...');
-    console.log('✅ [GEMINI] getNewTopicalQuestion key points count:', parsed.keyPoints.length);
-
-    // Validate question quality and topic uniqueness
-    if (!parsed.questionText || parsed.questionText.length < 15) {
-      console.warn('⚠️ [GEMINI] getNewTopicalQuestion: Question text insufficient, using smart fallback');
-      console.log(`📝 Original AI question: "${parsed.questionText}"`);
-      parsed.questionText = generateFallbackQuestion(jdResumeText, coveredTopics) + ' [FALLBACK: AI question insufficient]';
-    }
-
-    if (parsed.keyPoints.length < 3) {
-      console.warn('⚠️ [GEMINI] getNewTopicalQuestion: Key points insufficient, supplementing with fallbacks');
-      console.log(`📝 Original key points count: ${parsed.keyPoints.length}`);
-      parsed.keyPoints = [
-        ...parsed.keyPoints,
-        ...getFallbackKeyPoints(parsed.questionText).slice(0, 4 - parsed.keyPoints.length)
-      ];
-      console.log('📝 Enhanced key points with fallbacks');
-    }
-
-    const result = {
-      questionText: parsed.questionText,
-      keyPoints: parsed.keyPoints,
-      rawAiResponseText: rawAiResponseText,
-    };
-    
-    console.log('🎉 [GEMINI] getNewTopicalQuestion completed successfully');
-    return result;
-
-  } catch (error) {
-    console.error('💥 [GEMINI] getNewTopicalQuestion failed completely:', error);
-    console.log('🔄 [GEMINI] Using emergency fallback');
-    
-    // Emergency fallback question when AI completely fails
-    const emergencyQuestion = generateFallbackQuestion(jdResumeText, coveredTopics) + ' [FALLBACK: AI topic generation failed]';
-    const emergencyKeyPoints = getFallbackKeyPoints(emergencyQuestion);
-    
-    console.log('📝 [GEMINI] Emergency topical question fallback');
-    
-    return {
-      questionText: emergencyQuestion,
-      keyPoints: emergencyKeyPoints,
-      rawAiResponseText: `FALLBACK_RESPONSE: Topic generation AI failed. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
-  }
-}
-
-// Enhanced helper functions
-
-// Function removed - was unused legacy code
-
-function buildTopicalPrompt(
-  jdResumeText: JdResumeText,
-  persona: Persona,
-  history: MvpSessionTurn[],
-  coveredTopics?: string[]
-): Content[] {
-  const contents: Content[] = [];
-  const systemInstructionText = `You are generating new topical interview questions. ${persona.systemPrompt}
-
-CRITICAL INSTRUCTIONS:
-- Generate questions about NEW topics not yet covered
-- Focus on job description requirements and resume experience
-- Avoid repeating previously discussed topics
-- Create distinct, focused questions for each topic area
-- Provide helpful key points to guide the candidate
-- Ensure questions are substantive and interview-appropriate
-
-Your goal is to select the next most important topic to explore based on the job requirements.`;
-
-  const coveredTopicsText = coveredTopics && coveredTopics.length > 0 
-    ? `\n\nTopics already covered: ${coveredTopics.join(', ')}`
-    : '';
-
-  contents.push({
-    role: 'user',
-    parts: [
-      { text: systemInstructionText },
-      { text: `\n\nJob Description:\n<JD>\n${jdResumeText.jdText}\n</JD>` },
-      { text: `\n\nCandidate Resume:\n<RESUME>\n${jdResumeText.resumeText}\n</RESUME>` },
-      { text: coveredTopicsText },
-      {
-        text: `\n\nIMPORTANT - New Topic Question Format:
-You MUST respond in the following format for new topical questions:
-
-<QUESTION>Your new interview question about a different topic?</QUESTION>
-<KEY_POINTS>
-- Specific point about what the candidate should focus on
-- Another key area they should address  
-- Third important aspect to cover
-</KEY_POINTS>
-
-Generate a NEW topic that is different from any covered topics.
-Focus on job description requirements and resume experience not yet explored.
-Do NOT repeat previously covered topics.`
-      },
-    ],
-  });
-
-  return contents;
 }
 
 // Functions removed - were unused legacy code
