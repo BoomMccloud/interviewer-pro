@@ -7,6 +7,7 @@ alwaysApply: true
 ## Follow our TDD methodology when creating new features
 ## Keep files to less than 300 rows, files should be modular and with single functionality
 ## Start with backend features first, once they pass, start working on the frontend
-## For each file you generate, write a summary at the top of the file that describes what the file does and key functions.
+## For each file you generate, write a summary at the top of the file that describes what the file does and key functions
 ## If lint errors persist, as the user to run `npm run lint` in terminal to see what the output is
+## check package.json to see what scripts we have
 ## use npm run test:backend and test:backend:watch when testing backend components

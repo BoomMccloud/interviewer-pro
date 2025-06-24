@@ -30,13 +30,14 @@ interface TextInterviewUIProps {
     status: 'active' | 'paused' | 'completed';
     startTime: Date | null;
     personaName?: string; // Name of the interviewer persona
+    questionNumber?: number;
+    totalQuestions?: number;
   };
   userInput: string;
   setUserInput: (input: string) => void;
   onSubmitResponse: (response: string) => Promise<void>;
   isLoading: boolean;
-  onGetNextTopic?: () => Promise<void>;
-  isGettingNextTopic?: boolean;
+  onMoveToNext?: () => Promise<void>;
   onSave?: () => Promise<void>;
   onEnd?: () => Promise<void>;
   isSaving?: boolean;
@@ -49,8 +50,7 @@ export default function TextInterviewUI({
   setUserInput, 
   onSubmitResponse, 
   isLoading,
-  onGetNextTopic,
-  isGettingNextTopic = false,
+  onMoveToNext,
   onSave,
   onEnd,
   isSaving,
@@ -122,6 +122,14 @@ export default function TextInterviewUI({
         <div className="w-full flex gap-6">
           {/* Questions and Guidance Container */}
           <div className="flex-1">
+            {sessionData.questionNumber && sessionData.totalQuestions && (
+              <div
+                className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 tracking-wide"
+                data-testid="question-progress"
+              >
+                Question {sessionData.questionNumber} of {sessionData.totalQuestions}
+              </div>
+            )}
             <div className="flex items-center gap-3 mb-4">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
@@ -250,67 +258,56 @@ export default function TextInterviewUI({
               <div className="flex">
                 <button
                   type="submit"
-                  disabled={!userInput.trim() || isLoading}
-                  className="h-full px-6 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-lg focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center"
+                  className="h-full px-6 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  disabled={isLoading || !userInput.trim()}
                 >
-                  {isLoading ? 'Sending...' : 'Send'}
+                  {isLoading ? 'Thinking...' : 'Submit Response'}
                 </button>
               </div>
             </div>
             
             {/* Session Controls */}
-            <div className="flex justify-between items-center pt-2">
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                Press Ctrl+Enter to send • Use clear and specific examples in your responses
-              </div>
-              <div className="flex gap-3">
-                {/* 🔗 NEW: Next Question button for user-controlled topic transitions */}
-                {onGetNextTopic && (
-                  <button
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Tip: Press{' '}
+                <kbd className="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg dark:bg-gray-600 dark:text-gray-100 dark:border-gray-500">
+                  Ctrl+Enter
+                </kbd>{' '}
+                to send your message.
+              </p>
+              <div className="flex items-center gap-2">
+                {onMoveToNext && sessionData.questionNumber && (
+                   <button
                     type="button"
-                    onClick={onGetNextTopic}
-                    disabled={isGettingNextTopic}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    onClick={onMoveToNext}
+                    className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:bg-gray-400"
+                    disabled={isLoading}
                   >
-                    {isGettingNextTopic ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Getting Next Question...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                        </svg>
-                        Next Question
-                      </>
-                    )}
+                    Next Question
                   </button>
                 )}
-                <button
-                  type="button"
-                  className={`px-4 py-2 text-sm border rounded-lg transition-colors ${
-                    !onSave || isSaving 
-                      ? 'text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed opacity-50' 
-                      : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-slate-800'
-                  }`}
-                  onClick={onSave}
-                  disabled={!onSave || isSaving}
-                >
-                  {isSaving ? 'Saving...' : 'Save'}
-                </button>
-                <button
-                  type="button"
-                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                    !onEnd || isEnding
-                      ? 'text-red-300 dark:text-red-500 cursor-not-allowed opacity-50'
-                      : 'text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20'
-                  }`}
-                  onClick={onEnd}
-                  disabled={!onEnd || isEnding}
-                >
-                  {isEnding ? 'Ending...' : 'End Interview'}
-                </button>
+
+                {onSave && (
+                  <button 
+                    type="button" 
+                    onClick={onSave}
+                    disabled={isSaving}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 focus:outline-none disabled:opacity-50"
+                  >
+                    {isSaving ? 'Saving...' : 'Save & Exit'}
+                  </button>
+                )}
+
+                {onEnd && (
+                  <button 
+                    type="button" 
+                    onClick={onEnd}
+                    disabled={isEnding}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 focus:outline-none disabled:opacity-50"
+                  >
+                    {isEnding ? 'Ending...' : 'End Interview'}
+                  </button>
+                )}
               </div>
             </div>
           </form>

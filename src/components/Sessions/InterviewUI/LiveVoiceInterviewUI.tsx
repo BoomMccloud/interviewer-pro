@@ -69,10 +69,14 @@ interface LiveVoiceInterviewUIProps {
     personaId: string;
     personaName?: string;
     currentQuestion: string;
+    keyPoints: string[];
     timeRemaining: number;
     startTime: Date | null;
+    questionNumber?: number;
+    totalQuestions?: number;
   };
   currentQuestion: string;
+  onMoveToNext?: () => Promise<void>;
   onEnd: () => Promise<void>;
 }
 
@@ -101,6 +105,7 @@ const convertToBase64PCM = (pcmData: Float32Array): string => {
 export default function LiveVoiceInterviewUI({
   sessionData,
   currentQuestion,
+  onMoveToNext,
   onEnd,
 }: LiveVoiceInterviewUIProps) {
   const [uiState, setUIState] = useState<UIState>('waiting_to_start');
@@ -487,11 +492,16 @@ export default function LiveVoiceInterviewUI({
         <div className="w-full flex gap-6">
           {/* Questions and Guidance Container */}
           <div className="flex-1">
+            {sessionData.questionNumber && sessionData.totalQuestions && (
+              <div
+                className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 tracking-wide"
+                data-testid="question-progress"
+              >
+                Question {sessionData.questionNumber} of {sessionData.totalQuestions}
+              </div>
+            )}
             <div className="flex items-center gap-3 mb-4">
-              <div className={`w-2 h-2 rounded-full ${
-                uiState === 'interviewing' ? 'bg-green-500 animate-pulse' : 
-                uiState === 'error' ? 'bg-red-500' : 'bg-blue-500 animate-pulse'
-              }`}></div>
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
                 Current Question:
               </span>
@@ -506,7 +516,7 @@ export default function LiveVoiceInterviewUI({
               {currentQuestion || 'Loading next question...'}
             </h2>
             
-            {/* AI Guidance Hints - Same as TextInterviewUI */}
+            {/* AI Guidance Hints */}
             <div className="bg-white/60 dark:bg-slate-800/60 rounded-lg p-4 border border-blue-100 dark:border-gray-600">
               <div className="flex items-start gap-3">
                 <div className="w-5 h-5 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -515,9 +525,17 @@ export default function LiveVoiceInterviewUI({
                 <div className="text-sm text-gray-700 dark:text-gray-300">
                   <strong className="text-blue-900 dark:text-blue-400">Key points:</strong>
                   <ul className="list-disc list-inside mt-1 space-y-1">
-                    <li>Focus on your specific role and contributions</li>
-                    <li>Highlight technologies and tools you used</li>
-                    <li>Discuss challenges faced and how you overcame them</li>
+                    {sessionData.keyPoints && sessionData.keyPoints.length > 0 ? (
+                      sessionData.keyPoints.map((point, index) => (
+                        <li key={index}>{point}</li>
+                      ))
+                    ) : (
+                      <>
+                        <li>Focus on your specific role and contributions</li>
+                        <li>Highlight technologies and tools you used</li>
+                        <li>Discuss challenges faced and how you overcame them</li>
+                      </>
+                    )}
                   </ul>
                 </div>
               </div>
@@ -609,10 +627,41 @@ export default function LiveVoiceInterviewUI({
             )}
 
             {uiState === 'interviewing' && (
-              <div className="text-center">
-                <div className={`text-lg font-medium ${getStatusColor()}`}>
-                  {getStatusMessage()}
-                </div>
+              <div className="flex flex-col sm:flex-row items-center gap-4 mt-8">
+                <button
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={isAISpeaking}
+                  className={`w-full sm:w-auto px-8 py-4 text-lg font-bold rounded-full transition-all duration-300 ease-in-out flex items-center justify-center gap-3 ${
+                    isRecording
+                      ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg scale-105'
+                      : 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg'
+                  } ${isAISpeaking ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {isRecording ? (
+                    <>
+                      <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                      <span>Stop Recording</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm5 4a1 1 0 10-2 0v1.586l-1.293-1.293a1 1 0 10-1.414 1.414L8.586 11H7a1 1 0 100 2h1.586l-1.293 1.293a1 1 0 101.414 1.414L10 13.414V15a1 1 0 102 0v-1.586l1.293 1.293a1 1 0 101.414-1.414L12.414 11H14a1 1 0 100-2h-1.586l1.293-1.293a1 1 0 00-1.414-1.414L11 8.586V8z" clipRule="evenodd" />
+                      </svg>
+                      <span>{isAISpeaking ? "AI is Speaking..." : "Speak Your Answer"}</span>
+                    </>
+                  )}
+                </button>
+
+                {onMoveToNext && (
+                  <button
+                    type="button"
+                    onClick={onMoveToNext}
+                    className="px-6 py-3 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:bg-gray-400"
+                    disabled={isRecording || isAISpeaking}
+                  >
+                    Next Question
+                  </button>
+                )}
               </div>
             )}
 
@@ -653,17 +702,6 @@ export default function LiveVoiceInterviewUI({
               {uiState === 'completed' && "Use clear and specific examples in your responses"}
             </div>
             <div className="flex gap-3">
-              {/* Next Question button - same as TextInterviewUI but disabled for voice */}
-              <button
-                type="button"
-                disabled={true}
-                className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 text-sm font-medium rounded-lg cursor-not-allowed opacity-50 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-                Next Question
-              </button>
               <button
                 type="button"
                 className="px-4 py-2 text-sm border rounded-lg transition-colors text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed opacity-50"

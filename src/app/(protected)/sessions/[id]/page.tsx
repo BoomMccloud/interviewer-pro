@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { api } from '~/trpc/react';
 import TextInterviewUI from '~/components/Sessions/InterviewUI/TextInterviewUI';
 import LiveVoiceInterviewUI from '~/components/Sessions/InterviewUI/LiveVoiceInterviewUI';
-import type { InterviewMode } from '~/types';
+import type { InterviewMode, QuestionSegment, ConversationTurn } from '~/types';
 
 export default function SessionPage() {
   const params = useParams();
@@ -16,7 +16,6 @@ export default function SessionPage() {
   const mode = (searchParams.get('mode') ?? 'text') as InterviewMode;
   
   const [userInput, setUserInput] = useState('');
-  const [isGettingNextTopic, setIsGettingNextTopic] = useState(false);
 
   // Get session data
   const { data: session, isLoading, refetch } = api.session.getSessionById.useQuery({ sessionId });
@@ -28,7 +27,7 @@ export default function SessionPage() {
     },
   });
 
-  const getNextTopicMutation = api.session.getNextTopicalQuestion.useMutation({
+  const moveToNextMutation = api.session.moveToNextQuestion.useMutation({
     onSuccess: () => {
       void refetch();
     },
@@ -50,13 +49,8 @@ export default function SessionPage() {
   };
 
   // Handle getting next topic
-  const handleGetNextTopic = async () => {
-    setIsGettingNextTopic(true);
-    try {
-      await getNextTopicMutation.mutateAsync({ sessionId });
-    } finally {
-      setIsGettingNextTopic(false);
-    }
+  const handleMoveToNext = async () => {
+    await moveToNextMutation.mutateAsync({ sessionId });
   };
 
   // Handle save
@@ -80,19 +74,26 @@ export default function SessionPage() {
     );
   }
 
+  // Current question and history from segments
+  const questionSegments = (session.questionSegments as unknown) as QuestionSegment[] | null;
+  const currentSegment = questionSegments?.[session.currentQuestionIndex] ?? null;
+
   // Prepare session data for components
   const sessionData = {
     sessionId: session.id,
-    history: [], // TODO: Extract from questionSegments
-    currentQuestion: 'Loading next question...', // TODO: Extract from questionSegments
-    keyPoints: [], // TODO: Extract from questionSegments or persona
+    history: currentSegment?.conversation.map(turn => ({
+      ...turn,
+      timestamp: new Date(turn.timestamp),
+    })) ?? [],
+    currentQuestion: currentSegment?.question ?? 'Loading interview...',
+    keyPoints: currentSegment?.keyPoints ?? [],
     status: session.status as 'active' | 'paused' | 'completed',
     startTime: session.startTime,
-    personaName: session.personaId ? `Persona: ${session.personaId}` : undefined,
+    personaName: session.personaId, // Use available personaId as a safe fallback
     personaId: session.personaId ?? 'default',
     isActive: session.status === 'active',
-    conversationHistory: [], // TODO: Extract from questionSegments
-    questionNumber: session.currentQuestionIndex ?? 1,
+    questionNumber: session.currentQuestionIndex + 1,
+    totalQuestions: questionSegments?.length ?? 0,
     timeRemaining: 3600, // Default 1 hour
   };
 
@@ -102,6 +103,7 @@ export default function SessionPage() {
       <LiveVoiceInterviewUI
         sessionData={sessionData}
         currentQuestion={sessionData.currentQuestion}
+        onMoveToNext={handleMoveToNext}
         onEnd={handleEnd}
       />
     );
@@ -115,8 +117,8 @@ export default function SessionPage() {
       setUserInput={setUserInput}
       onSubmitResponse={handleSubmitResponse}
       isLoading={submitResponseMutation.isPending}
-      onGetNextTopic={handleGetNextTopic}
-      isGettingNextTopic={isGettingNextTopic}
+      onMoveToNext={handleMoveToNext}
+      isGettingNextTopic={moveToNextMutation.isPending}
       onSave={handleSave}
       onEnd={handleEnd}
       isSaving={saveSessionMutation.isPending}

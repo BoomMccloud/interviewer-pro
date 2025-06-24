@@ -135,7 +135,7 @@ export interface QuestionSegment {
   questionType: 'opening' | 'technical' | 'behavioral' | 'followup';
   question: string;             // The actual question text
   keyPoints: string[];          // Array of guidance points
-  startTime: string;            // ISO timestamp when question started
+  startTime: string | null;     // ISO timestamp when question started, null if not started yet
   endTime: string | null;       // ISO timestamp when completed, null if active
   conversation: ConversationTurn[]; // Chat history for this specific question
 }
@@ -154,7 +154,7 @@ export const zodQuestionSegment = z.object({
   questionType: z.enum(['opening', 'technical', 'behavioral', 'followup']),
   question: z.string(),
   keyPoints: z.array(z.string()),
-  startTime: z.string(),
+  startTime: z.string().nullable(), // Allow null for questions that haven't started yet
   endTime: z.string().nullable(),
   conversation: z.array(zodConversationTurn),
 });
