@@ -149,6 +149,7 @@ export default function LiveVoiceInterviewUI({
       // Step 3: Initialize Gemini client with ephemeral token (secure!)
       clientRef.current = new GoogleGenAI({
         apiKey: tokenResponse.token, // Use ephemeral token instead of exposed API key
+        apiVersion: 'v1alpha',
       });
 
       if (outputNodeRef.current && outputAudioContextRef.current) {
@@ -199,11 +200,13 @@ export default function LiveVoiceInterviewUI({
     const model = 'gemini-2.0-flash-live-001';
 
     try {
+      const systemPrompt = `You are an expert interviewer named Interviewer. You are conducting a structured mock interview. You are currently on question ${sessionData.questionNumber ?? 1} of ${sessionData.totalQuestions ?? 3}. Please ask the candidate the following question, and then listen carefully to their complete answer. Do not interrupt them. Question: "${currentQuestion}"`;
+      
       sessionRef.current = await clientRef.current.live.connect({
         model,
         config: {
           responseModalities: [Modality.AUDIO],
-          systemInstruction: "You are doing a mock interview as the interviewer. You are asking the candidate questions and they are answering. You are not the candidate.",
+          systemInstruction: systemPrompt,
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Orus' } },
           },
